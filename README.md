@@ -26,7 +26,7 @@ The [playground](https://pragyaangaur.github.io/Kerf/) has three things to do.
 
 ## Install the command line tool
 
-Kerf needs Python 3.10 or newer and NumPy. There are no other dependencies.
+Kerf needs Python 3.10 or newer and NumPy. Both 3.10 and 3.12 are covered by the test matrix. There are no other dependencies.
 
 ```bash
 git clone https://github.com/pragyaangaur/Kerf.git
@@ -241,7 +241,7 @@ The Python engine and the JavaScript engine are separate implementations of the 
 python -m pytest tests -q
 ```
 
-There are 110 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
+There are 115 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
 
 ## What this is not
 
