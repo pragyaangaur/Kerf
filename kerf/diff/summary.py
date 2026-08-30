@@ -46,7 +46,11 @@ def summarize(diff: "ModelDiff") -> str:
     parts: list[str] = []
     if diff.parametric and not diff.parametric.empty():
         tree = diff.parametric
-        if tree.parameters:
+        equations = [change for change in tree.parameters if change.is_equation]
+        if equations and all(not change.value_moved for change in equations):
+            names = ", ".join(change.key for change in equations[:3])
+            parts.append(f"equations rewritten on {names} with no change in value")
+        elif tree.parameters:
             parts.append(", ".join(change.describe() for change in tree.parameters[:2]))
         counts: dict[str, int] = {}
         for change in tree.features:

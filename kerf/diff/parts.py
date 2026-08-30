@@ -15,13 +15,40 @@ from ..parametric import Feature, Part, expression_dependencies, resolve
 
 @dataclass
 class FieldChange:
-    """One value that differs, with both forms and both resolved numbers."""
+    """One value that differs, with both forms and both resolved numbers.
+
+    The written form matters as much as the number. A dimension that goes
+    from 15.5 to `bolt_pitch/2` may resolve to the same number and still be a
+    real change, because the author replaced a measurement with a rule.
+    """
 
     key: str
     old: Any
     new: Any
     old_value: Optional[float] = None
     new_value: Optional[float] = None
+
+    @property
+    def is_equation(self) -> bool:
+        """Did the written form change, rather than only the number?"""
+        return isinstance(self.old, str) or isinstance(self.new, str)
+
+    @property
+    def kind(self) -> str:
+        """One of value, equation, rule added, or rule removed."""
+        if not self.is_equation:
+            return "value"
+        if isinstance(self.new, str) and not isinstance(self.old, str):
+            return "rule added"
+        if isinstance(self.old, str) and not isinstance(self.new, str):
+            return "rule removed"
+        return "equation"
+
+    @property
+    def value_moved(self) -> bool:
+        if self.old_value is None or self.new_value is None:
+            return True
+        return abs(self.new_value - self.old_value) > 1e-12
 
     @property
     def delta(self) -> Optional[float]:
@@ -47,6 +74,8 @@ class FieldChange:
         percent = self.pct
         if percent is not None and abs(percent) > 1e-9:
             text += f" ({percent:+.1f}%)"
+        if self.is_equation and not self.value_moved:
+            text += "  [same number, different rule]"
         return text
 
 
