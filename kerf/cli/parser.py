@@ -49,6 +49,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = add("diff", commands.cmd_diff, "compare two revisions geometrically")
     sp.add_argument("rev_a", nargs="?")
     sp.add_argument("rev_b", nargs="?")
+    sp.add_argument("--staged", action="store_true",
+                    help="compare HEAD against the staging area instead of the working tree")
     sp.add_argument("--paths", nargs="*", help="limit to these paths")
     sp.add_argument("--resolution", type=int, default=56, help="voxel resolution for the diff")
     sp.add_argument("--fast", action="store_true", help="skip the volumetric pass")
@@ -123,6 +125,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp = add("report", commands.cmd_report, "write a visual diff report")
     sp.add_argument("rev_a", nargs="?")
     sp.add_argument("rev_b", nargs="?")
+    sp.add_argument("--staged", action="store_true",
+                    help="compare HEAD against the staging area instead of the working tree")
     sp.add_argument("-o", "--out")
     sp.add_argument("--paths", nargs="*")
     sp.add_argument("--title")

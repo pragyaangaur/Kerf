@@ -326,6 +326,20 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
         self.write_index(index)
         return done
 
+    def worktree_tree(self) -> Tree:
+        """The tracked files as they are on disk right now.
+
+        Blobs are written to the store so the comparison can read them the
+        same way it reads any other revision. Objects are addressed by their
+        content, so a file that is later staged costs nothing more.
+        """
+        tree = Tree()
+        index = self.read_index()
+        for path in sorted(index):
+            if os.path.exists(os.path.join(self.root, path)):
+                tree.entries[path] = self.stage_entry(path)
+        return tree
+
     def export(self, rev: str, dest: str) -> int:
         """Write every file of one revision into a plain directory."""
         tree = self.commit_tree(rev)

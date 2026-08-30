@@ -134,16 +134,25 @@ def cmd_log(args) -> None:
 
 
 def _resolve_pair(repo: Repo, args) -> tuple[Tree, Tree, str, str]:
-    """Work out which two trees to compare from the given revisions."""
+    """Work out which two trees to compare.
+
+    With no revisions this compares what is staged against what is on disk,
+    which is the change somebody just made and the one they usually want to
+    see. Passing --staged compares HEAD against the staging area instead.
+    """
     if args.rev_b:
         a, b = repo.resolve(args.rev_a), repo.resolve(args.rev_b)
         return repo.commit_tree(a), repo.commit_tree(b), a[:10], b[:10]
     if args.rev_a:
         a = repo.resolve(args.rev_a)
-        return repo.commit_tree(a), Tree(entries=repo.read_index()), a[:10], "index"
-    head = repo.head_commit()
-    old = repo.commit_tree(head) if head else Tree()
-    return old, Tree(entries=repo.read_index()), (head[:10] if head else "empty"), "index"
+        return repo.commit_tree(a), repo.worktree_tree(), a[:10], "working tree"
+    if getattr(args, "staged", False):
+        head = repo.head_commit()
+        old = repo.commit_tree(head) if head else Tree()
+        return old, Tree(entries=repo.read_index()), (head[:10] if head else "empty"), "index"
+    return (
+        Tree(entries=repo.read_index()), repo.worktree_tree(), "index", "working tree",
+    )
 
 
 def cmd_diff(args) -> None:
