@@ -6,6 +6,7 @@
 
 import { Viewer } from './viewer/renderer.js';
 import { createCompareTab } from './ui/compare.js';
+import { createEquationsTab } from './ui/equations.js';
 import { createMergeTab } from './ui/merge.js';
 import { createReexportTab } from './ui/reexport.js';
 
@@ -58,7 +59,12 @@ async function boot() {
   }
 
   const context = { viewer, catalog, loadPart };
-  const tabs = [createCompareTab(context), createMergeTab(context), createReexportTab(context)];
+  const tabs = [
+    createCompareTab(context),
+    createEquationsTab(context),
+    createMergeTab(context),
+    createReexportTab(context),
+  ];
   const byId = new Map(tabs.map((tab) => [tab.id, tab]));
 
   async function show(id) {

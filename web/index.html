@@ -33,6 +33,7 @@
   </div>
   <div class="tabs" role="tablist">
     <button type="button" role="tab" data-tab="compare" aria-selected="true">Edit and compare</button>
+    <button type="button" role="tab" data-tab="equations" aria-selected="false">Equations</button>
     <button type="button" role="tab" data-tab="merge" aria-selected="false">Merge two branches</button>
     <button type="button" role="tab" data-tab="reexport" aria-selected="false">The re-export problem</button>
   </div>
@@ -98,6 +99,62 @@
     </div>
   </section>
 
+  <section class="panel" data-panel="equations" hidden>
+    <div class="stage">
+      <div class="viewer-slot" id="equations-viewer-slot"></div>
+      <p class="hint" id="equations-caption">Rewrite an equation and the part rebuilds.</p>
+    </div>
+
+    <div class="side">
+      <div class="block">
+        <div class="block-head">
+          <h2>The equations</h2>
+          <button type="button" class="ghost-btn" id="equations-reset">Start again</button>
+        </div>
+        <p class="summary">
+          A dimension in CAD is rarely a number. It is a rule such as
+          <span class="mono">bolt_d/2</span>, and that rule is the design
+          intent somebody wrote down. Edit any of these and the part rebuilds.
+          Point one at a name that does not exist and kerf says so, the way a
+          rebuild error would.
+        </p>
+        <label class="field">
+          <span>Part</span>
+          <select id="equation-part-picker"></select>
+        </label>
+        <div id="equation-list"></div>
+        <div id="equation-issues"></div>
+      </div>
+
+      <div class="block block-diff">
+        <h2>Drive it and see where it breaks</h2>
+        <p class="summary">
+          Every guide to parametric CAD says to move each variable across its
+          range and check the model still rebuilds, because equations that
+          work at the nominal value often fail at the extremes. Here that runs
+          in a few milliseconds. Hover a bar to see the part at that value.
+        </p>
+        <div class="sweep-controls">
+          <label class="field">
+            <span>Parameter</span>
+            <select id="sweep-parameter"></select>
+          </label>
+          <label class="field">
+            <span>From</span>
+            <input type="number" id="sweep-from" step="any">
+          </label>
+          <label class="field">
+            <span>To</span>
+            <input type="number" id="sweep-to" step="any">
+          </label>
+          <button type="button" class="primary" id="sweep-run">Run</button>
+        </div>
+        <div id="sweep-chart"></div>
+        <p class="sweep-note" id="sweep-note"></p>
+      </div>
+    </div>
+  </section>
+
   <section class="panel" data-panel="merge" hidden>
     <div class="stage">
       <div class="viewer-slot" id="merge-viewer-slot"></div>
@@ -110,7 +167,7 @@
         </div>
         <button type="button" class="ghost-btn" id="merge-recentre">Recentre</button>
       </div>
-      <p class="hint">The merged part is drawn from the tree kerf produced, not from either branch.</p>
+      <p class="hint" id="merge-caption">The merged part is drawn from the tree kerf produced, not from either branch.</p>
     </div>
 
     <div class="side">
