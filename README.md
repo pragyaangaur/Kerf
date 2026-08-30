@@ -20,8 +20,9 @@ Fixing this is not a matter of adding version history, because every CAD system 
 The [playground](https://pragyaangaur.github.io/Kerf/) has three things to do.
 
 1. **Edit and compare.** Drag a parameter and watch the diff appear. New material turns green, material that went away turns red, and the panel names the parameter that moved along with the features it drives.
-2. **Merge two branches.** Pick what two people did to the same bracket and merge them. Some pairs combine cleanly. One pair merges cleanly on the feature tree and produces a part where the two cuts break into each other, which kerf catches by evaluating the result.
-3. **The re-export problem.** Export the same part twice and compare the answers. A byte comparison reports most of the file as changed. Kerf reports no design change, and shows the largest distance any vertex moved.
+2. **Equations.** Rewrite any equation and the part rebuilds. Point one at a name that does not exist and kerf reports it the way a rebuild error would. Then drive a parameter across a range and the chart shows the volume it produces and the values where the part stops building.
+3. **Merge two branches.** Pick what two people did to the same bracket and merge them. Some pairs combine cleanly. One pair collides in space, and another renames a parameter the other branch depends on, so the merged part would not rebuild.
+4. **The re-export problem.** Export the same part twice and compare the answers. A byte comparison reports most of the file as changed. Kerf reports no design change, and shows the largest distance any vertex moved.
 
 ## Install the command line tool
 
@@ -82,6 +83,61 @@ Feature level diffing needs a native format. The volumetric diff does not, and i
 
 A region that is nowhere thicker than one lattice cell is measurement noise rather than material, which is exactly what re-tessellation looks like. Kerf counts those cells separately and leaves them out of the reported change, so the number stays honest.
 
+### It treats equations as part of the model
+
+A dimension in CAD is rarely a number. It is a rule such as `bolt_d/2`, and that rule is the design intent the author wrote down. Kerf reads those expressions to build geometry, so the graph they form is available for free, and three things follow from it.
+
+A change to an equation is a different event from a change to a value. Moving a dimension from 15.5 to `bolt_pitch/2` can leave the geometry byte for byte identical and still be one of the more significant edits somebody can make, because it turns a measurement into a rule. Kerf reports that as `rule added` and says the number did not move.
+
+```
+$ kerf equations parts/bracket.kpart
+
+parts/bracket.kpart  8 parameters, 32 driven dimensions
+
+  bolt_d = 3.6      drives motor bolt NW, motor bolt NE, motor bolt SW and 1 more
+  bolt_pitch = 31   drives motor bolt NW, motor bolt NE, motor bolt SW and 1 more
+  bore_d = 22       drives motor bore
+  plate_t = 7       drives base plate
+```
+
+Every guide to parametric CAD says to drive each variable across its expected range and check the model still rebuilds, because equations that hold at the nominal value often fail at the extremes. Doing that by hand means typing a number, waiting for a rebuild, and reading the tree, over and over. Kerf evaluates a part in a few milliseconds, so it can do the sweep and report the range the model survives.
+
+```
+$ kerf sweep parts/bracket.kpart plate_w --from 8 --to 110 --steps 9
+
+          8  ###  8,045 mm3
+       20.8  #####  14,039 mm3
+       33.5  ########  21,101 mm3
+       46.2  ##########  28,109 mm3
+         59  #############  35,260 mm3
+       71.8  ################  42,835 mm3
+       84.5  ##################  50,149 mm3
+       97.2  #####################  57,891 mm3
+        110  ########################  65,487 mm3
+
+  note  plate_w builds across 8 to 110, and at 8 the part has fallen into 2 separate bodies
+```
+
+`kerf check --sweep` runs that over every parameter of every tracked part, which turns a chore nobody does into something continuous integration can fail on.
+
+### It blocks merges that would not rebuild
+
+One person renames `bolt_pitch` to `hole_pitch`. Another adds a hole positioned at `bolt_pitch/2`. Both branches build. The merged part references a name that no longer exists, and the person who finds out is whoever opens the file next.
+
+```
+$ kerf merge tidy-names
+
+   conflict  parts/bracket.kpart
+             conflict: equation bolt_e.center.x: reads 'bolt_pitch', which the
+                       parameter table does not define. Both branches build on
+                       their own, and the merged part would not rebuild.
+
+1 conflict(s), nothing was committed
+  note: both branches build on their own, and the merged part would not rebuild
+```
+
+No amount of care on either branch prevents this, because the merge creates the failure. Only something that evaluates the merged model can see it.
+
 ### It blocks merges that collide in space
 
 Kerf merges feature by feature and parameter by parameter. It then does something no text merge can do, which is to evaluate the merged solid and check whether the two sides' additions occupy the same space.
@@ -129,7 +185,10 @@ kerf report HEAD~2 HEAD -o review.html
 | `report [a] [b] -o out.html` | visual comparison with a 3D viewer |
 | `view <file>` | render one model to HTML |
 | `branch` `checkout` `restore` | branching |
-| `merge <branch>` | feature level merge with the interference check |
+| `merge <branch>` | feature level merge, gated on the merged part being valid |
+| `equations <part>` | the equations that drive a part, and what each one reaches |
+| `sweep <part> <parameter>` | drive one parameter and find where the part breaks |
+| `check [--sweep]` | confirm every tracked part still builds |
 | `lock` `unlock` `locks` | claim parts that cannot be merged |
 | `export` `stats` `config` | housekeeping |
 
@@ -159,10 +218,11 @@ A parameter table and an ordered feature tree, evaluated to geometry through sig
 kerf/
   objects/      content addressed store, and the three object types
   geometry/     meshes, fingerprinting, tolerance equivalence, voxel grids
-  parametric/   expressions, features, distance fields, surface nets, parts
+  parametric/   expressions, features, distance fields, surface nets, parts,
+                the equation graph, model validity, parameter sweeps
   formats/      STL and OBJ
   diff/         identity, then feature trees, then volume
-  merge/        three way merge and the interference check
+  merge/        three way merge, plus the gates that check the merged result
   repo/         refs, staging, status, history, locks
   report/       the HTML review page and its viewer
   cli/          the command line
@@ -181,7 +241,7 @@ The Python engine and the JavaScript engine are separate implementations of the 
 python -m pytest tests -q
 ```
 
-There are 73 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, diffing, merging, and the repository.
+There are 108 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
 
 ## What this is not
 
@@ -193,6 +253,12 @@ Kerf is a prototype built to prove the model. It is not a production tool, and t
 - **A genuine re-mesh reads as a change.** Tolerance equivalence only recognises the same tessellation with moved coordinates. Seeing through a re-mesh needs a surface distance measure, and guessing would be worse than saying so.
 - **Native CAD formats are opaque.** STEP, SolidWorks, and Fusion files are versioned and lockable without being understood. STEP is the realistic first one to parse.
 - **There is no server.** Repositories are local, so there is no push, no pull, and no way to arbitrate a lock between two people.
+
+## Is any of this new
+
+[docs/novelty.md](docs/novelty.md) is an honest answer rather than a pitch. Most of kerf is not new. Onshape already branches and merges CAD properly, visual comparison is table stakes, and content addressed storage of binaries is a solved problem.
+
+One thing does appear to be new. Every other tool ends a merge when the two sides stop disagreeing. Kerf then builds the result and asks whether it is valid, and refuses the merge when the answer is no. That is the whole argument, and the same document sets out where the moat could be and what would sink the idea.
 
 ## Deploying the playground
 
