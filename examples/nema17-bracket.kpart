@@ -1,0 +1,190 @@
+{
+  "kerf_part": 1,
+  "name": "nema17-bracket",
+  "units": "mm",
+  "parameters": {
+    "plate_w": 60,
+    "plate_d": 46,
+    "plate_t": 7,
+    "bolt_d": 3.6,
+    "bolt_pitch": 31,
+    "bore_d": 22,
+    "wall_t": 5,
+    "rise": 40
+  },
+  "features": [
+    {
+      "id": "base",
+      "type": "box",
+      "op": "add",
+      "name": "base plate",
+      "size": [
+        "plate_w",
+        "plate_d",
+        "plate_t"
+      ],
+      "center": [
+        0,
+        0,
+        "plate_t/2"
+      ],
+      "round": 2
+    },
+    {
+      "id": "riser",
+      "type": "box",
+      "op": "add",
+      "name": "riser wall",
+      "size": [
+        "plate_w",
+        "wall_t",
+        "rise"
+      ],
+      "center": [
+        0,
+        "plate_d/2 - wall_t/2",
+        "rise/2"
+      ],
+      "round": 2,
+      "blend": 3
+    },
+    {
+      "id": "face",
+      "type": "box",
+      "op": "add",
+      "name": "motor face",
+      "size": [
+        "plate_w",
+        "wall_t",
+        42
+      ],
+      "center": [
+        0,
+        "plate_d/2 - wall_t/2",
+        "rise - 6"
+      ],
+      "round": 2
+    },
+    {
+      "id": "gusset",
+      "type": "box",
+      "op": "add",
+      "name": "corner gusset",
+      "size": [
+        8,
+        26,
+        26
+      ],
+      "center": [
+        0,
+        4,
+        13
+      ],
+      "rotate": [
+        0,
+        0,
+        0
+      ],
+      "round": 1,
+      "blend": 4
+    },
+    {
+      "id": "bore",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "motor bore",
+      "radius": "bore_d/2",
+      "height": 40,
+      "axis": "y",
+      "center": [
+        0,
+        "plate_d/2 - wall_t/2",
+        "rise - 6"
+      ]
+    },
+    {
+      "id": "bolt_a",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "motor bolt NW",
+      "radius": "bolt_d/2",
+      "height": 40,
+      "axis": "y",
+      "center": [
+        "-bolt_pitch/2",
+        "plate_d/2 - wall_t/2",
+        "rise - 6 + bolt_pitch/2"
+      ]
+    },
+    {
+      "id": "bolt_b",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "motor bolt NE",
+      "radius": "bolt_d/2",
+      "height": 40,
+      "axis": "y",
+      "center": [
+        "bolt_pitch/2",
+        "plate_d/2 - wall_t/2",
+        "rise - 6 + bolt_pitch/2"
+      ]
+    },
+    {
+      "id": "bolt_c",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "motor bolt SW",
+      "radius": "bolt_d/2",
+      "height": 40,
+      "axis": "y",
+      "center": [
+        "-bolt_pitch/2",
+        "plate_d/2 - wall_t/2",
+        "rise - 6 - bolt_pitch/2"
+      ]
+    },
+    {
+      "id": "bolt_d",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "motor bolt SE",
+      "radius": "bolt_d/2",
+      "height": 40,
+      "axis": "y",
+      "center": [
+        "bolt_pitch/2",
+        "plate_d/2 - wall_t/2",
+        "rise - 6 - bolt_pitch/2"
+      ]
+    },
+    {
+      "id": "mount_l",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "chassis screw L",
+      "radius": 2.6,
+      "height": 30,
+      "axis": "z",
+      "center": [
+        -22,
+        -14,
+        0
+      ]
+    },
+    {
+      "id": "mount_r",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "chassis screw R",
+      "radius": 2.6,
+      "height": 30,
+      "axis": "z",
+      "center": [
+        22,
+        -14,
+        0
+      ]
+    }
+  ]
+}
