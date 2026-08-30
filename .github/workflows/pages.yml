@@ -1,3 +1,12 @@
+# Publishes web/ to GitHub Pages.
+#
+# This needs the repository to have Pages set to build from GitHub Actions,
+# under Settings then Pages then Build and deployment. The workflow token
+# cannot turn that on by itself.
+#
+# The site also works when Pages builds from a branch instead. In that case
+# the root index.html redirects to web/, and this workflow is not used.
+
 name: pages
 
 on:
@@ -21,15 +30,11 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/configure-pages@v5
-        with:
-          # Turn Pages on the first time this runs, so the site does not need
-          # a manual visit to the repository settings.
-          enablement: true
+      - uses: actions/checkout@v7
+      - uses: actions/configure-pages@v6
       - name: Upload the playground
-        uses: actions/upload-pages-artifact@v3
+        uses: actions/upload-pages-artifact@v5
         with:
           path: web
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
