@@ -1,0 +1,31 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest
+      - name: Run the test suite
+        run: python -m pytest tests -q
+      - name: Build the worked example
+        run: |
+          python -m kerf demo /tmp/demo --quiet
+          cd /tmp/demo
+          python -m kerf log --stat
+          python -m kerf diff HEAD~1 HEAD
