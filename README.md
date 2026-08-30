@@ -194,6 +194,14 @@ Kerf is a prototype built to prove the model. It is not a production tool, and t
 - **Native CAD formats are opaque.** STEP, SolidWorks, and Fusion files are versioned and lockable without being understood. STEP is the realistic first one to parse.
 - **There is no server.** Repositories are local, so there is no push, no pull, and no way to arbitrate a lock between two people.
 
+## Deploying the playground
+
+The playground is plain static files under `web/`, so any host that serves a directory will do. GitHub Pages works in either of its two modes.
+
+Building from a branch needs no setup. Jekyll is switched off by the `.nojekyll` file, the files under `web/` are served as they are, and the `index.html` at the repository root redirects there.
+
+Building from GitHub Actions gives a cleaner URL, because the workflow uploads `web/` as the site root. It needs Pages set to that mode once, under Settings, then Pages, then Build and deployment. The workflow token is not allowed to change that setting on its own.
+
 ## Licence
 
 MIT. See [LICENSE](LICENSE).
