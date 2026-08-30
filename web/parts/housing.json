@@ -1,0 +1,63 @@
+{
+  "kerf_part": 1,
+  "name": "idler-housing",
+  "units": "mm",
+  "parameters": {
+    "bore": 9.0,
+    "body": 34,
+    "hub_r": 13,
+    "slot_w": 3
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "box",
+      "op": "add",
+      "name": "body",
+      "size": [
+        "body",
+        "body",
+        14
+      ],
+      "round": 4
+    },
+    {
+      "id": "hub",
+      "type": "cylinder",
+      "op": "add",
+      "name": "hub",
+      "radius": "hub_r",
+      "height": 20,
+      "axis": "z",
+      "blend": 2
+    },
+    {
+      "id": "bore",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "bearing bore",
+      "radius": "bore",
+      "height": 40,
+      "axis": "z"
+    },
+    {
+      "id": "slot",
+      "type": "box",
+      "op": "subtract",
+      "name": "clamp slot",
+      "size": [
+        "slot_w",
+        40,
+        30
+      ],
+      "center": [
+        0,
+        0,
+        0
+      ]
+    }
+  ],
+  "meta": {
+    "summary": "A clamping idler housing, the kind that arrives as an STL export."
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "kerf_part": 1,
+  "name": "shaft-spacer",
+  "units": "mm",
+  "parameters": {
+    "od": 16,
+    "id": 8.2,
+    "length": 12
+  },
+  "features": [
+    {
+      "id": "body",
+      "type": "cylinder",
+      "op": "add",
+      "name": "body",
+      "radius": "od/2",
+      "height": "length",
+      "axis": "z"
+    },
+    {
+      "id": "bore",
+      "type": "cylinder",
+      "op": "subtract",
+      "name": "shaft bore",
+      "radius": "id/2",
+      "height": "length + 4",
+      "axis": "z"
+    }
+  ],
+  "meta": {
+    "summary": "The smallest useful part. A tube with a bore through it."
+  }
+}

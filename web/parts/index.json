@@ -1,0 +1,25 @@
+{
+  "parts": [
+    {
+      "id": "bracket",
+      "name": "NEMA-17 bracket",
+      "file": "parts/bracket.json",
+      "summary": "Y axis motor bracket: base plate, riser, motor face, bore and bolt pattern.",
+      "resolution": 40
+    },
+    {
+      "id": "housing",
+      "name": "Idler housing",
+      "file": "parts/housing.json",
+      "summary": "A clamping idler housing, the kind that arrives as an STL export.",
+      "resolution": 44
+    },
+    {
+      "id": "spacer",
+      "name": "Shaft spacer",
+      "file": "parts/spacer.json",
+      "summary": "The smallest useful part. A tube with a bore through it.",
+      "resolution": 48
+    }
+  ]
+}

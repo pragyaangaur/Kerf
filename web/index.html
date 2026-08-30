@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kerf playground</title>
+<meta name="description" content="Version control that understands geometry. Edit a part, see what changed, merge two branches, and watch a re-export report as no change.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'><text y='52' font-size='52'>📐</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="masthead">
+  <div class="masthead-inner">
+    <div class="brand">
+      <svg class="brand-mark" viewBox="0 0 64 64" width="34" height="34" aria-hidden="true">
+        <rect x="4" y="4" width="56" height="56" rx="2" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".35"/>
+        <path d="M16 46 L16 18 M16 32 L34 18 M16 32 L34 46" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="square"/>
+        <path d="M44 14 L44 50" stroke="currentColor" stroke-width="1.5" stroke-dasharray="3 4" opacity=".6"/>
+      </svg>
+      <div>
+        <p class="brand-name">Kerf</p>
+        <p class="brand-line">Version control that understands geometry</p>
+      </div>
+    </div>
+    <nav class="masthead-links">
+      <a href="https://github.com/pragyaangaur/Kerf">Source</a>
+      <a href="https://github.com/pragyaangaur/Kerf#readme">Docs</a>
+    </nav>
+  </div>
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" data-tab="compare" aria-selected="true">Edit and compare</button>
+    <button type="button" role="tab" data-tab="merge" aria-selected="false">Merge two branches</button>
+    <button type="button" role="tab" data-tab="reexport" aria-selected="false">The re-export problem</button>
+  </div>
+</header>
+
+<main>
+  <p class="intro">
+    Everything on this page runs in your browser. The geometry kernel, the diff,
+    and the merge are the same algorithms as the command line tool, ported to
+    JavaScript. Nothing is uploaded and nothing is precomputed.
+  </p>
+
+  <section class="panel" data-panel="compare">
+    <div class="stage">
+      <div class="viewer-slot" id="viewer-slot"></div>
+      <div class="stage-bar">
+        <div class="modes" id="view-modes" role="group" aria-label="What to show">
+          <button type="button" data-mode="changes" aria-pressed="true">Changes</button>
+          <button type="button" data-mode="after" aria-pressed="false">After</button>
+          <button type="button" data-mode="before" aria-pressed="false">Before</button>
+          <button type="button" data-mode="ghost" aria-pressed="false">Ghost</button>
+        </div>
+        <button type="button" class="ghost-btn" id="recentre">Recentre</button>
+      </div>
+      <p class="hint">Drag to orbit, scroll to zoom, shift and drag to pan.</p>
+    </div>
+
+    <div class="side">
+      <div class="block">
+        <div class="block-head">
+          <h2>Working copy</h2>
+          <span class="badge" id="revision-badge">at revision 1</span>
+        </div>
+        <label class="field">
+          <span>Part</span>
+          <select id="part-picker"></select>
+        </label>
+        <p class="summary" id="part-summary"></p>
+        <div class="actions">
+          <button type="button" id="commit-btn" class="primary">Commit this revision</button>
+          <button type="button" id="reset-btn">Discard changes</button>
+        </div>
+      </div>
+
+      <div class="block">
+        <h3>Parameters</h3>
+        <div id="parameter-controls"></div>
+      </div>
+
+      <div class="block">
+        <h3>Features</h3>
+        <p class="note-line">Turn one off to see what it was holding up.</p>
+        <div id="feature-list"></div>
+      </div>
+
+      <div class="block block-diff">
+        <div class="block-head">
+          <h2>What kerf sees</h2>
+          <span class="badge" id="diff-status">no change</span>
+        </div>
+        <div id="diff-body"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="merge" hidden>
+    <div class="stage">
+      <div class="viewer-slot" id="merge-viewer-slot"></div>
+      <div class="stage-bar">
+        <div class="modes" id="merge-modes" role="group" aria-label="Which revision to show">
+          <button type="button" data-merge-view="merged" aria-pressed="true">Merged</button>
+          <button type="button" data-merge-view="ours" aria-pressed="false">Ours</button>
+          <button type="button" data-merge-view="theirs" aria-pressed="false">Theirs</button>
+          <button type="button" data-merge-view="base" aria-pressed="false">Ancestor</button>
+        </div>
+        <button type="button" class="ghost-btn" id="merge-recentre">Recentre</button>
+      </div>
+      <p class="hint">The merged part is drawn from the tree kerf produced, not from either branch.</p>
+    </div>
+
+    <div class="side">
+      <div class="block">
+        <h2>Two people, one part</h2>
+        <p class="summary">
+          Both branches start from the same bracket. Pick what each person did,
+          then merge. Kerf works feature by feature, so edits to different
+          features combine. After that it evaluates the result and checks
+          whether the two sets of changes occupy the same space.
+        </p>
+        <label class="field">
+          <span>Our branch</span>
+          <select id="ours-picker"></select>
+        </label>
+        <label class="field">
+          <span>Their branch</span>
+          <select id="theirs-picker"></select>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="interference-toggle" checked>
+          <span>Check the merged part for interference</span>
+        </label>
+        <div class="actions">
+          <button type="button" id="merge-btn" class="primary">Merge their branch into ours</button>
+        </div>
+      </div>
+
+      <div class="block block-diff">
+        <div class="block-head">
+          <h2>Merge result</h2>
+          <span class="badge" id="merge-status">not run</span>
+        </div>
+        <div id="merge-body">
+          <p class="empty-note">Pick two branches and press merge.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" data-panel="reexport" hidden>
+    <div class="stage">
+      <div class="viewer-slot" id="reexport-viewer-slot"></div>
+      <p class="hint">The same solid, exported twice. Nothing about the shape changed.</p>
+    </div>
+
+    <div class="side">
+      <div class="block">
+        <h2>Open the file, save it again</h2>
+        <p class="summary">
+          Every CAD system writes a different byte stream each time it exports.
+          Facet order moves, the header carries a new timestamp, and floats
+          wobble in the last digit. This page exports the part twice and then
+          measures the result rather than describing it.
+        </p>
+        <label class="field">
+          <span>Part</span>
+          <select id="reexport-picker"></select>
+        </label>
+        <div class="actions">
+          <button type="button" id="reexport-btn" class="primary">Export it again</button>
+          <button type="button" id="toolchain-btn">Export from another toolchain</button>
+          <button type="button" id="real-edit-btn">Make a real edit instead</button>
+        </div>
+        <p class="fineprint">
+          The first button writes the file the way the same exporter would on a
+          second run. The second adds the float noise a different toolchain
+          leaves behind. The third changes the part.
+        </p>
+      </div>
+
+      <div class="block block-diff">
+        <div class="block-head">
+          <h2>Two answers</h2>
+          <span class="badge" id="reexport-status">waiting</span>
+        </div>
+        <div id="reexport-body">
+          <p class="empty-note">Press export to write the file a second time.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="page-foot">
+  <span>Kerf is a prototype. The geometry is real, the CAD kernel is not.</span>
+  <a href="https://github.com/pragyaangaur/Kerf">github.com/pragyaangaur/Kerf</a>
+</footer>
+
+<noscript>
+  <p class="noscript">This page runs its geometry engine in the browser, so it needs JavaScript.</p>
+</noscript>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
