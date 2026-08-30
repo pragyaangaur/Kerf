@@ -23,6 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          # Turn Pages on the first time this runs, so the site does not need
+          # a manual visit to the repository settings.
+          enablement: true
       - name: Upload the playground
         uses: actions/upload-pages-artifact@v3
         with:
