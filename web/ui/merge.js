@@ -63,7 +63,7 @@ export function createMergeTab(context) {
       theirs: branchPart(theirs),
     };
     state.result = mergeParts(
-      state.base, state.parts.ours, state.parts.theirs, toggle.checked,
+      state.base, state.parts.ours, state.parts.theirs, toggle.checked, true,
     );
     state.parts.merged = state.result.merged;
     render(ours, theirs);
@@ -71,15 +71,22 @@ export function createMergeTab(context) {
   }
 
   function draw() {
+    const caption = document.getElementById('merge-caption');
     const part = state.parts[state.view] || state.parts.merged;
     if (!part) return;
     let evaluated;
     try {
       evaluated = evaluatePart(part, 40);
     } catch (error) {
-      clear(body).appendChild(element('p', 'conflict-detail', error.message));
+      // A merged part that will not rebuild is the finding, so the result
+      // panel stays and the viewer says why there is nothing to draw.
+      viewer.setLayers([], null);
+      caption.textContent = `This revision cannot be built: ${error.message}.`;
       return;
     }
+    caption.textContent = state.view === 'merged'
+      ? 'The merged part is drawn from the tree kerf produced, not from either branch.'
+      : `Showing the ${state.view} branch.`;
     viewer.setLayers(
       [{ positions: evaluated.mesh.positions, indices: evaluated.mesh.indices, color: 'neutral' }],
       [evaluated.grid.origin, evaluated.grid.origin.map(
@@ -102,8 +109,10 @@ export function createMergeTab(context) {
       status.textContent = 'merged cleanly';
       status.className = 'badge is-clean';
     } else {
-      const onlyInterference = result.conflicts.every((item) => item.scope === 'interference');
-      status.textContent = onlyInterference ? 'geometry collides' : 'conflict';
+      const scopes = new Set(result.conflicts.map((item) => item.scope));
+      status.textContent = scopes.size === 1 && scopes.has('interference') ? 'geometry collides'
+        : scopes.size === 1 && scopes.has('equation') ? 'would not rebuild'
+        : 'conflict';
       status.className = 'badge is-conflict';
     }
 
@@ -128,6 +137,15 @@ export function createMergeTab(context) {
           + 'comes from evaluating the merged part and finding that the two '
           + 'sets of changes occupy the same space. A text merge has no way to '
           + 'see this.',
+        ));
+      }
+      if (result.conflicts.some((item) => item.scope === 'equation')) {
+        section.appendChild(element(
+          'p', 'fineprint',
+          'Both branches build on their own. One renamed a parameter and the '
+          + 'other wrote a dimension that reads the old name, so the merged '
+          + 'part would not rebuild. This is the error a CAD system reports '
+          + 'the next time somebody opens the file.',
         ));
       }
       host.appendChild(section);

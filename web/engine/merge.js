@@ -9,6 +9,7 @@
 
 import { clonePart, featureLabel, resolvedParameters } from './part.js';
 import { compileFeature, featureBounds } from './sdf.js';
+import { checkEquations } from './validity.js';
 
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -156,7 +157,29 @@ export function detectInterference(merged, oursAdded, theirsAdded, samples = 18)
   return found;
 }
 
-export function mergeParts(base, ours, theirs, checkInterference = true) {
+// Equation problems the merge itself introduced. One person renames a
+// parameter, the other writes a dimension reading the old name, and both
+// branches build on their own. Only new problems are reported, because a part
+// that was already broken is not this merge's fault.
+export function detectEquationBreaks(merged, sides) {
+  const existing = new Set();
+  for (const side of sides) {
+    if (!side) continue;
+    for (const issue of checkEquations(side)) {
+      existing.add(`${issue.severity}|${issue.where}|${issue.message}`);
+    }
+  }
+  return checkEquations(merged)
+    .filter((issue) => issue.severity === 'error')
+    .filter((issue) => !existing.has(`${issue.severity}|${issue.where}|${issue.message}`))
+    .map((issue) => ({
+      scope: 'equation',
+      key: issue.where,
+      detail: `${issue.message}. Both branches build on their own, and the merged part would not rebuild.`,
+    }));
+}
+
+export function mergeParts(base, ours, theirs, checkInterference = true, checkEquationsGate = true) {
   const merged = clonePart(ours);
   const conflicts = [];
   const notes = [];
@@ -242,6 +265,15 @@ export function mergeParts(base, ours, theirs, checkInterference = true) {
     }
   }
 
+  // The validity gates run only on a merge that is otherwise clean. There is
+  // no point saying the merged part will not rebuild when somebody still has
+  // to resolve a conflict that changes it.
+  let equationBreaks = [];
+  if (checkEquationsGate && !conflicts.length) {
+    equationBreaks = detectEquationBreaks(merged, [base, ours, theirs]);
+    conflicts.push(...equationBreaks);
+  }
+
   let interference = [];
   if (checkInterference && !conflicts.length) {
     const oursAdded = ours.features
@@ -251,5 +283,8 @@ export function mergeParts(base, ours, theirs, checkInterference = true) {
     conflicts.push(...interference);
   }
 
-  return { merged, conflicts, notes, interference, clean: conflicts.length === 0 };
+  return {
+    merged, conflicts, notes, interference, equationBreaks,
+    clean: conflicts.length === 0,
+  };
 }
