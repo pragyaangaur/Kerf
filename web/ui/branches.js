@@ -65,6 +65,37 @@ export const BRANCHES = [
     },
   },
   {
+    id: 'rename-pitch',
+    name: 'rename bolt_pitch to hole_pitch',
+    story: 'Tidying up the names, so bolt_pitch becomes hole_pitch everywhere it is used.',
+    apply: (part) => {
+      part.parameters.hole_pitch = part.parameters.bolt_pitch;
+      delete part.parameters.bolt_pitch;
+      for (const feature of part.features) {
+        for (const [key, value] of Object.entries(feature)) {
+          if (Array.isArray(value)) {
+            feature[key] = value.map((item) => (typeof item === 'string'
+              ? item.replace(/bolt_pitch/g, 'hole_pitch') : item));
+          } else if (typeof value === 'string' && key !== 'name' && key !== 'id') {
+            feature[key] = value.replace(/bolt_pitch/g, 'hole_pitch');
+          }
+        }
+      }
+    },
+  },
+  {
+    id: 'fifth-bolt',
+    name: 'add a fifth mounting hole',
+    story: 'One more hole on the motor face, placed from bolt_pitch like the others.',
+    apply: (part) => {
+      part.features.push({
+        id: 'bolt_e', type: 'cylinder', op: 'subtract', name: 'motor bolt centre',
+        radius: 'bolt_d/2', height: 40, axis: 'y',
+        center: ['bolt_pitch/2', 'plate_d/2 - wall_t/2', 'rise - 6'],
+      });
+    },
+  },
+  {
     id: 'raise-face',
     name: 'raise the motor face',
     story: 'The pulley fouled the frame, so the whole riser goes up by 6 mm.',
