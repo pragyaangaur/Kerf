@@ -21,6 +21,10 @@ jobs:
           python -m pip install --upgrade pip
           pip install -e .
           pip install pytest
+      - name: Compile every module
+        # A syntax error only newer Python accepts will not show up in the
+        # tests, because a module nothing imports is never parsed.
+        run: python -m compileall -q kerf tests
       - name: Run the test suite
         run: python -m pytest tests -q
       - name: Build the worked example
