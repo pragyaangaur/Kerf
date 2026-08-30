@@ -12,6 +12,7 @@ from typing import Optional
 
 from ..parametric import Feature, Part
 from .conflicts import Conflict, short
+from .equations import detect_equation_breaks
 from .interference import detect_interference
 
 
@@ -21,6 +22,7 @@ def merge_parts(
     ours: Part,
     theirs: Part,
     check_interference: bool = True,
+    check_equations: bool = True,
 ) -> tuple[Part, list[Conflict], list[str]]:
     """Merge theirs into ours, using base as the common ancestor."""
     base = base or Part()
@@ -128,7 +130,13 @@ def merge_parts(
                 )
             )
 
-    if check_interference and not conflicts:
+    # The validity gates run only on a merge that is otherwise clean. There is
+    # no point telling somebody the merged part will not rebuild when they
+    # still have to resolve a conflict that changes it.
+    if not conflicts and check_equations:
+        conflicts.extend(detect_equation_breaks(path, merged, base, ours, theirs))
+
+    if not conflicts and check_interference:
         ours_added = [item.id for item in ours.features if item.id not in base_features]
         conflicts.extend(detect_interference(path, merged, ours_added, theirs_added))
 

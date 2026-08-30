@@ -21,7 +21,14 @@ def blob(repo, entry) -> Optional[bytes]:
     return None if entry is None else repo.store.get_typed(entry.oid, "blob")
 
 
-def merge_trees(repo, base_tree, our_tree, their_tree, check_interference: bool = True) -> MergeResult:
+def merge_trees(
+    repo,
+    base_tree,
+    our_tree,
+    their_tree,
+    check_interference: bool = True,
+    check_equations: bool = True,
+) -> MergeResult:
     """Merge every file in two revisions against their common ancestor."""
     result = MergeResult()
     paths = sorted(
@@ -97,7 +104,8 @@ def merge_trees(repo, base_tree, our_tree, their_tree, check_interference: bool 
                 )
                 continue
             merged, conflicts, notes = merge_parts(
-                path, base_part, our_part, their_part, check_interference
+                path, base_part, our_part, their_part,
+                check_interference, check_equations,
             )
             if conflicts:
                 result.files.append(
