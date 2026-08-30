@@ -86,6 +86,29 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("-m", "--message")
     sp.add_argument("--no-interference", action="store_true",
                     help="skip the geometric interference check")
+    sp.add_argument("--no-equation-check", action="store_true",
+                    help="skip the check that the merged part still rebuilds")
+
+    sp = add("equations", commands.cmd_equations, "show the equations that drive a part")
+    sp.add_argument("target", help="a part file, or <rev>:<path>")
+    sp.add_argument("--explain", help="show everything one parameter reaches")
+
+    sp = add("check", commands.cmd_check, "check that every part still builds")
+    sp.add_argument("rev", nargs="?")
+    sp.add_argument("--sweep", action="store_true",
+                    help="also drive each parameter across its range")
+    sp.add_argument("--steps", type=int, default=7)
+    sp.add_argument("--spread", type=float, default=0.6)
+    sp.add_argument("--resolution", type=int, default=24)
+
+    sp = add("sweep", commands.cmd_sweep, "drive one parameter and see where the part breaks")
+    sp.add_argument("target", help="a part file, or <rev>:<path>")
+    sp.add_argument("parameter")
+    sp.add_argument("--from", dest="start", type=float)
+    sp.add_argument("--to", dest="stop", type=float)
+    sp.add_argument("--steps", type=int, default=11)
+    sp.add_argument("--spread", type=float, default=0.6)
+    sp.add_argument("--resolution", type=int, default=28)
 
     sp = add("lock", commands.cmd_lock, "claim a part nobody can merge for you")
     sp.add_argument("path")

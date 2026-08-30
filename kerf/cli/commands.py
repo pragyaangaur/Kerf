@@ -324,9 +324,11 @@ def cmd_merge(args) -> None:
         return
 
     base_tree = repo.commit_tree(base) if base else Tree()
-    result = merge_module.merge_trees(repo, base_tree, repo.commit_tree(head),
-                                   repo.commit_tree(other),
-                                   check_interference=not args.no_interference)
+    result = merge_module.merge_trees(
+        repo, base_tree, repo.commit_tree(head), repo.commit_tree(other),
+        check_interference=not args.no_interference,
+        check_equations=not args.no_equation_check,
+    )
 
     print(f"{bold('merging')} {brass(args.branch)} into "
           f"{brass(repo.current_branch() or head[:10])}")
@@ -346,10 +348,14 @@ def cmd_merge(args) -> None:
 
     if result.conflicts:
         interference = [c for c in result.conflicts if c.scope == "interference"]
+        equations = [c for c in result.conflicts if c.scope == "equation"]
         print()
         print(red(f"{len(result.conflicts)} conflict(s); nothing was committed"))
         if interference:
             print(yellow("  note: the feature trees merged cleanly but the geometry collides"))
+        if equations:
+            print(yellow("  note: both branches build on their own, and the merged part "
+                         "would not rebuild"))
         _write_conflict_sides(repo, result)
         raise SystemExit(2)
 
@@ -502,6 +508,154 @@ def cmd_view(args) -> None:
     with open(out, "w") as fh:
         fh.write(html_doc)
     print(f"wrote {bold(out)}")
+
+
+def _load_part(repo, target: str):
+    """Read a part from the working tree or from a revision, as <rev>:<path>."""
+    from ..parametric import Part
+
+    if ":" in target:
+        rev, _, path = target.partition(":")
+        model = repo.model_at(rev, path)
+        if model.part is None:
+            die(f"{path} at {rev} is not a kerf part file")
+        return model.part, f"{path} at {rev}"
+    with open(target, "rb") as handle:
+        data = handle.read()
+    try:
+        return Part.loads(data), target
+    except Exception as error:               # noqa: BLE001
+        die(f"cannot read {target}: {error}")
+        return None, target
+
+
+def cmd_equations(args) -> None:
+    repo = open_repo(args)
+    from ..parametric import build_graph, check_equations, format_graph
+
+    part, label = _load_part(repo, args.target)
+    graph = build_graph(part)
+    print(f"{bold(label)}  {dim(f'{len(graph.parameters)} parameters, '
+                              f'{len(graph.fields)} driven dimensions')}")
+    print()
+
+    issues = check_equations(part)
+    values = {}
+    if not issues:
+        values = part.resolved_parameters()
+
+    for line in format_graph(graph, values):
+        name, _, rest = line.partition(" = ")
+        expression, _, drives = rest.partition("   drives ")
+        text = f"  {brass(name)} = {expression}"
+        if drives:
+            text += dim(f"   drives {drives}")
+        print(text)
+
+    if args.explain:
+        target = args.explain
+        if target not in graph.parameters:
+            die(f"{target} is not a parameter of this part")
+        print()
+        print(f"{bold(target)} is read by:")
+        readers = graph.readers_of(target)
+        for reader in readers:
+            print(f"    {reader}")
+        features = graph.feature_readers_of(target)
+        if features:
+            print(f"  and reaches {len(features)} feature(s): {', '.join(features)}")
+        depends = graph.upstream(target)
+        if depends:
+            print(f"  it depends on: {', '.join(sorted(depends))}")
+
+    if issues:
+        print()
+        for issue in issues:
+            style = red if issue.severity == "error" else yellow
+            print(f"  {style(issue.severity)}  {issue.describe()}")
+        raise SystemExit(2)
+
+
+def cmd_check(args) -> None:
+    repo = open_repo(args)
+    from ..model import classify
+    from ..parametric import Part, check_part, sweep_all
+
+    tree = repo.commit_tree(args.rev) if args.rev else None
+    paths = []
+    if tree is not None:
+        paths = [p for p in tree.paths() if classify(p) == "parametric"]
+    else:
+        paths = [p for p in repo.read_index() if classify(p) == "parametric"]
+
+    if not paths:
+        print(dim("no part files tracked"))
+        return
+
+    failed = False
+    for path in paths:
+        if tree is not None:
+            part = Part.loads(repo.store.get_typed(tree.entries[path].oid, "blob"))
+        else:
+            with open(os.path.join(repo.root, path), "rb") as handle:
+                part = Part.loads(handle.read())
+
+        issues = check_part(part, resolution=args.resolution)
+        errors = [i for i in issues if i.severity == "error"]
+        mark = red("broken") if errors else (yellow("warning") if issues else green("builds"))
+        print(f"  {mark:>18}  {path}")
+        for issue in issues:
+            style = red if issue.severity == "error" else yellow
+            print(f"                      {style(issue.describe())}")
+        failed = failed or bool(errors)
+
+        if args.sweep and not errors:
+            for result in sweep_all(part, spread=args.spread, steps=args.steps,
+                                    resolution=args.resolution):
+                if result.robust() and not result.warnings():
+                    continue
+                print(f"                      {yellow('range')} {result.summary()}")
+    if failed:
+        raise SystemExit(2)
+
+
+def cmd_sweep(args) -> None:
+    repo = open_repo(args)
+    from ..parametric import default_range, sweep_parameter
+
+    part, label = _load_part(repo, args.target)
+    if args.parameter not in part.parameters:
+        die(f"{args.parameter} is not a parameter of {label}")
+
+    raw = part.parameters[args.parameter]
+    if args.start is None or args.stop is None:
+        if not isinstance(raw, (int, float)):
+            die(f"{args.parameter} is an expression, so give --from and --to")
+        low, high = default_range(float(raw), args.spread)
+        start = args.start if args.start is not None else low
+        stop = args.stop if args.stop is not None else high
+    else:
+        start, stop = args.start, args.stop
+
+    result = sweep_parameter(part, args.parameter, start, stop, args.steps, args.resolution)
+    print(f"{bold(label)}  {dim(f'driving {args.parameter} from {start:g} to {stop:g}')}")
+    print()
+    for row in result.volume_bars():
+        value, _, rest = row.partition("  ")
+        style = red if "fails" in rest else dim
+        print(f"  {brass(value)}  {style(rest)}")
+    print()
+    if result.robust() and not result.warnings():
+        print(f"  {green('holds')} {result.summary()}")
+    else:
+        print(f"  {yellow('note')}  {result.summary()}")
+        for point in result.failures():
+            print(f"        {red(f'{point.value:g}')}  {point.reason}")
+        for point in result.warnings():
+            detail = next(
+                (i.message for i in point.issues if i.severity == "warning"), ""
+            )
+            print(f"        {yellow(f'{point.value:g}')}  {detail}")
 
 
 def cmd_stats(args) -> None:
