@@ -14,6 +14,11 @@ from typing import Any
 FEATURE_TYPES = {"box", "cylinder", "sphere", "torus"}
 OPS = {"add", "subtract", "intersect"}
 
+# Fields that hold a fixed choice rather than a number. A value like "y" in
+# one of these is an axis name, and reading it as an expression would report
+# a parameter called y that nobody ever wrote.
+ENUM_KEYS = {"axis"}
+
 
 @dataclass
 class Feature:
