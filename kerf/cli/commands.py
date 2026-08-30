@@ -1,0 +1,552 @@
+"""The commands behind each subcommand."""
+
+from __future__ import annotations
+
+import os
+import sys
+
+from .. import diff as diff_module
+from .. import merge as merge_module
+from .. import report as report_module
+from ..model import format_name
+from ..objects import Tree
+from ..repo import Repo, RepoError, find_repo
+from .style import blue, bold, brass, die, dim, fmt_state, green, red, stamp, yellow
+from .style import USE_COLOR
+
+
+def open_repo(args) -> Repo:
+    """Find the repository the command should act on."""
+    return Repo(find_repo(getattr(args, "repo", None) or "."))
+
+
+def cmd_init(args) -> None:
+    root = os.path.abspath(args.path)
+    os.makedirs(root, exist_ok=True)
+    repo = Repo.init(root, args.author)
+    print(f"initialised an empty kerf repository in {bold(os.path.join(root, '.kerf'))}")
+    print(dim(f"  author: {repo.author}   branch: main"))
+    print(dim("  next: kerf add <part> && kerf commit -m \"first revision\""))
+
+
+def cmd_add(args) -> None:
+    repo = open_repo(args)
+    try:
+        staged = repo.add(args.paths, force=args.force)
+    except RepoError as exc:
+        die(str(exc))
+        return
+    for entry in staged:
+        note = ""
+        if entry.kind in ("mesh", "parametric") and entry.gid:
+            note = dim(f"  geometry {entry.gid[:10]}")
+        print(f"  {green('staged')} {entry.path}{note}")
+    if not staged:
+        print(dim("nothing to stage"))
+
+
+def cmd_unstage(args) -> None:
+    repo = open_repo(args)
+    repo.unstage(args.paths)
+    for p in args.paths:
+        print(f"  {yellow('unstaged')} {p}")
+
+
+def cmd_status(args) -> None:
+    repo = open_repo(args)
+    branch = repo.current_branch() or f"detached at {(repo.head_commit() or '')[:10]}"
+    head = repo.head_commit()
+    print(f"on branch {bold(branch)}" + (dim(f"  ({head[:10]})") if head else dim("  (no commits yet)")))
+
+    locks = repo.locks()
+    if locks:
+        print()
+        print(bold("locked parts"))
+        for path, info in sorted(locks.items()):
+            who = info["owner"]
+            mark = green("you") if who == repo.author else red(who)
+            reason = f", {info['reason']}" if info.get("reason") else ""
+            print(f"  {'🔒' if not not USE_COLOR else '[L]'} {path} {dim('held by')} {mark}{dim(reason)}")
+
+    staged, unstaged = repo.status()
+    if staged:
+        print()
+        print(bold("staged for the next revision"))
+        for entry in staged:
+            detail = dim(f"  {entry.detail}") if entry.detail else ""
+            print(f"  {fmt_state(entry.state)}  {entry.path}{detail}")
+    if unstaged:
+        print()
+        print(bold("changed in the working tree"))
+        for entry in unstaged:
+            detail = dim(f"  {entry.detail}") if entry.detail else ""
+            print(f"  {fmt_state(entry.state)}  {entry.path}{detail}")
+    if not staged and not unstaged:
+        print()
+        print(dim("working tree clean"))
+
+
+def cmd_commit(args) -> None:
+    repo = open_repo(args)
+    try:
+        oid = repo.commit(args.message, author=args.author, allow_empty=args.allow_empty)
+    except RepoError as exc:
+        die(str(exc))
+        return
+    commit = repo.commit_obj(oid)
+    tree = repo.tree_obj(commit.tree)
+    print(f"[{repo.current_branch() or 'detached'} {bold(oid[:10])}] {commit.short()}")
+    print(dim(f"  {len(tree.entries)} files tracked · {stamp(commit.timestamp)} · {commit.author}"))
+
+
+def cmd_log(args) -> None:
+    repo = open_repo(args)
+    start = repo.resolve(args.rev) if args.rev else None
+    history = repo.history(start, args.limit)
+    if not history:
+        print(dim("no commits yet"))
+        return
+    heads = {}
+    for name, oid in repo.branches().items():
+        heads.setdefault(oid, []).append(name)
+    head = repo.head_commit()
+    for oid, commit in history:
+        marks = ""
+        names = heads.get(oid, [])
+        if oid == head:
+            names = ["HEAD"] + names
+        if names:
+            marks = "  " + brass("(" + ", ".join(names) + ")")
+        merge = dim(" merge") if len(commit.parents) > 1 else ""
+        print(f"{brass(oid[:10])}{marks}{merge}  {bold(commit.short())}")
+        print(dim(f"    {commit.author} · {stamp(commit.timestamp)}"))
+        if args.stat:
+            parent = commit.parents[0] if commit.parents else None
+            old_tree = repo.tree_obj(repo.commit_obj(parent).tree) if parent else Tree()
+            diffs = diff_module.diff_trees(repo, old_tree, repo.tree_obj(commit.tree),
+                                        volumetric=False)
+            for d in diffs:
+                print(f"    {fmt_state(d.status)}  {d.path}  {dim(d.headline())}")
+        rest = commit.message.split("\n", 1)[1].strip() if "\n" in commit.message else ""
+        if rest:
+            for line in rest.splitlines():
+                print(dim(f"    {line}"))
+
+
+def _resolve_pair(repo: Repo, args) -> tuple[Tree, Tree, str, str]:
+    """Work out which two trees to compare from the given revisions."""
+    if args.rev_b:
+        a, b = repo.resolve(args.rev_a), repo.resolve(args.rev_b)
+        return repo.commit_tree(a), repo.commit_tree(b), a[:10], b[:10]
+    if args.rev_a:
+        a = repo.resolve(args.rev_a)
+        return repo.commit_tree(a), Tree(entries=repo.read_index()), a[:10], "index"
+    head = repo.head_commit()
+    old = repo.commit_tree(head) if head else Tree()
+    return old, Tree(entries=repo.read_index()), (head[:10] if head else "empty"), "index"
+
+
+def cmd_diff(args) -> None:
+    repo = open_repo(args)
+    old, new, label_a, label_b = _resolve_pair(repo, args)
+    diffs = diff_module.diff_trees(repo, old, new, resolution=args.resolution,
+                                volumetric=not args.fast, paths=args.paths or None)
+    changed = [d for d in diffs if d.status != "unchanged"]
+    print(f"{bold('comparing')} {brass(label_a)} {dim('→')} {brass(label_b)}")
+    if not changed:
+        print(dim("  no changes"))
+        return
+    for d in changed:
+        print()
+        print(f"{fmt_state(d.status)}  {bold(d.path)}  {dim(format_name(d.path))}")
+        if d.old_path:
+            print(f"            {dim('was ' + d.old_path)}")
+        print(f"            {d.headline()}")
+        _print_detail(d, indent=" " * 12, verbose=args.verbose)
+
+
+def _print_detail(d: diff_module.ModelDiff, indent: str, verbose: bool) -> None:
+    for m in d.metrics:
+        if m.key in ("volume", "area") or verbose:
+            pct = f" ({m.pct:+.1f}%)" if m.pct is not None else ""
+            print(f"{indent}{dim(m.key + ':')} {m.old:,.4g} → {m.new:,.4g}{pct}")
+
+    p = d.parametric
+    if p and not p.empty():
+        for ch in p.parameters:
+            impact = p.impact.get(ch.key, [])
+            tail = dim(f"   drives {', '.join(impact[:3])}") if impact else ""
+            print(f"{indent}{yellow('param')} {ch.describe()}{tail}")
+        for k, v in p.parameters_added.items():
+            print(f"{indent}{green('param')} {k} = {v}  {dim('(new)')}")
+        for k, v in p.parameters_removed.items():
+            print(f"{indent}{red('param')} {k}  {dim('(removed)')}")
+        for f in p.features:
+            style = {"added": green, "removed": red}.get(f.status, yellow)
+            print(f"{indent}{style(f.status)} {bold(f.label or f.id)} {dim(f.feature_type)}")
+            for ch in f.changes[: (None if verbose else 4)]:
+                print(f"{indent}    {dim(ch.describe())}")
+        for _, old_name, new_name in p.renamed:
+            print(f"{indent}{blue('renamed')} {old_name} → {new_name}")
+
+    v = d.volume
+    if v and not v.unchanged:
+        if v.translation:
+            mag = sum(t * t for t in v.translation) ** 0.5
+            print(f"{indent}{dim('moved:')} {mag:.3g} mm "
+                  f"({', '.join(f'{t:+.2f}' for t in v.translation)})")
+        for r in v.regions[: (None if verbose else 4)]:
+            style = green if r.kind == "added" else red
+            centre = ", ".join(f"{x:.1f}" for x in r.centroid)
+            print(f"{indent}{style(r.kind):>8} {diff_module.human_volume(r.volume, ascii_only=True)} "
+                  f"{dim('at (' + centre + ')')}")
+    if d.note:
+        print(f"{indent}{dim(d.note)}")
+
+
+def cmd_show(args) -> None:
+    repo = open_repo(args)
+    oid = repo.resolve(args.rev)
+    commit = repo.commit_obj(oid)
+    print(f"{brass('revision')} {bold(oid)}")
+    print(f"{dim('author  ')} {commit.author}")
+    print(f"{dim('date    ')} {stamp(commit.timestamp)}")
+    if commit.parents:
+        print(f"{dim('parents ')} {', '.join(p[:10] for p in commit.parents)}")
+    for k, v in commit.meta.items():
+        print(f"{dim(k.ljust(8))} {v}")
+    print()
+    for line in commit.message.splitlines():
+        print(f"    {line}")
+    print()
+    parent = commit.parents[0] if commit.parents else None
+    old = repo.commit_tree(parent) if parent else Tree()
+    diffs = diff_module.diff_trees(repo, old, repo.tree_obj(commit.tree),
+                                resolution=args.resolution, volumetric=not args.fast)
+    for d in diffs:
+        print(f"{fmt_state(d.status)}  {d.path}  {dim(d.headline())}")
+        if args.verbose:
+            _print_detail(d, indent=" " * 12, verbose=True)
+
+
+def cmd_ls(args) -> None:
+    repo = open_repo(args)
+    tree = repo.commit_tree(args.rev) if args.rev else Tree(entries=repo.read_index())
+    if not tree.entries:
+        print(dim("nothing tracked"))
+        return
+    width = max(len(p) for p in tree.entries)
+    for path in tree.paths():
+        entry = tree.entries[path]
+        size = f"{entry.size / 1024:.1f} KiB" if entry.size >= 1024 else f"{entry.size} B"
+        gid = entry.gid[:10] if entry.gid else dim("—")
+        print(f"  {path.ljust(width)}  {dim(entry.kind.ljust(10))} {size:>10}  {dim('geom')} {gid}")
+
+
+def cmd_cat(args) -> None:
+    repo = open_repo(args)
+    rev, _, path = args.target.partition(":")
+    if not path:
+        die("expected <rev>:<path>")
+    tree = repo.commit_tree(rev)
+    entry = tree.entries.get(path)
+    if entry is None:
+        die(f"{path} does not exist at {rev}")
+        return
+    data = repo.store.get_typed(entry.oid, "blob")
+    if args.out:
+        with open(args.out, "wb") as fh:
+            fh.write(data)
+        print(f"wrote {len(data)} bytes to {args.out}")
+    else:
+        sys.stdout.buffer.write(data)
+
+
+def cmd_branch(args) -> None:
+    repo = open_repo(args)
+    if args.delete:
+        repo.delete_branch(args.delete)
+        print(f"deleted branch {args.delete}")
+        return
+    if args.name:
+        oid = repo.create_branch(args.name, repo.resolve(args.start) if args.start else None)
+        print(f"created branch {bold(args.name)} at {brass(oid[:10])}")
+        return
+    current = repo.current_branch()
+    for name, oid in sorted(repo.branches().items()):
+        mark = green("* ") if name == current else "  "
+        commit = repo.commit_obj(oid)
+        print(f"{mark}{name.ljust(18)} {brass(oid[:10])}  {dim(commit.short())}")
+
+
+def cmd_checkout(args) -> None:
+    repo = open_repo(args)
+    if args.create:
+        repo.create_branch(args.rev)
+    try:
+        oid = repo.checkout(args.rev, force=args.force)
+    except RepoError as exc:
+        die(str(exc))
+        return
+    where = repo.current_branch() or f"detached at {oid[:10]}"
+    print(f"switched to {bold(where)} {dim(oid[:10])}")
+
+
+def cmd_restore(args) -> None:
+    repo = open_repo(args)
+    done = repo.restore(args.rev, args.paths)
+    for path in done:
+        print(f"  {blue('restored')} {path} {dim('from ' + args.rev)}")
+
+
+def cmd_merge(args) -> None:
+    repo = open_repo(args)
+    head = repo.head_commit()
+    if head is None:
+        die("nothing to merge into")
+        return
+    other = repo.resolve(args.branch)
+    base = repo.merge_base(head, other)
+
+    if other in repo.ancestors(head):
+        print(dim(f"{args.branch} is already merged"))
+        return
+    if base == head:
+        ref = repo.head_ref()
+        if ref:
+            repo.write_ref(ref, other)          # move this branch, stay on it
+        else:
+            repo.set_head_detached(other)
+        repo.checkout(other, force=True)
+        if ref:
+            repo.set_head_to_branch(ref.rsplit("/", 1)[-1])
+        print(f"fast-forwarded {bold(repo.current_branch() or 'HEAD')} to {brass(other[:10])}")
+        return
+
+    base_tree = repo.commit_tree(base) if base else Tree()
+    result = merge_module.merge_trees(repo, base_tree, repo.commit_tree(head),
+                                   repo.commit_tree(other),
+                                   check_interference=not args.no_interference)
+
+    print(f"{bold('merging')} {brass(args.branch)} into "
+          f"{brass(repo.current_branch() or head[:10])}")
+    print(dim(f"  common ancestor: {base[:10] if base else 'none'}"))
+    print()
+
+    for f in result.files:
+        if f.status in ("unchanged", "ours"):
+            continue
+        style = {"merged": green, "theirs": blue, "added": green,
+                 "removed": red, "conflict": red}.get(f.status, dim)
+        print(f"  {style(f.status.rjust(9))}  {f.path}")
+        for note in f.notes:
+            print(f"             {dim(note)}")
+        for conflict in f.conflicts:
+            print(f"             {red('conflict:')} {conflict.describe()}")
+
+    if result.conflicts:
+        interference = [c for c in result.conflicts if c.scope == "interference"]
+        print()
+        print(red(f"{len(result.conflicts)} conflict(s); nothing was committed"))
+        if interference:
+            print(yellow("  note: the feature trees merged cleanly but the geometry collides"))
+        _write_conflict_sides(repo, result)
+        raise SystemExit(2)
+
+    written = 0
+    index = repo.read_index()
+    for f in result.files:
+        if f.status in ("unchanged", "ours"):
+            continue
+        full = os.path.join(repo.root, f.path)
+        if f.status == "removed":
+            if os.path.exists(full):
+                os.remove(full)
+            index.pop(f.path, None)
+            continue
+        if f.data is None:
+            continue
+        os.makedirs(os.path.dirname(full), exist_ok=True)
+        with open(full, "wb") as fh:
+            fh.write(f.data)
+        index[f.path] = repo.stage_entry(f.path)
+        written += 1
+    repo.write_index(index)
+
+    message = args.message or f"merge {args.branch} into {repo.current_branch() or 'HEAD'}"
+    oid = repo.commit(message, parents=[head, other], allow_empty=True,
+                      meta={"merge": f"{head[:10]}+{other[:10]}"})
+    print()
+    print(f"{green('merged cleanly')} into {bold(oid[:10])} ({written} files written)")
+
+
+def _write_conflict_sides(repo: Repo, result: merge_module.MergeResult) -> None:
+    for f in result.files:
+        if f.status != "conflict" or not (f.ours_data or f.theirs_data):
+            continue
+        for suffix, data in (("ours", f.ours_data), ("theirs", f.theirs_data)):
+            if data is None:
+                continue
+            stem, ext = os.path.splitext(f.path)
+            out = os.path.join(repo.root, f"{stem}.{suffix}{ext}")
+            with open(out, "wb") as fh:
+                fh.write(data)
+            print(dim(f"             wrote {os.path.relpath(out, repo.root)}"))
+
+
+def cmd_lock(args) -> None:
+    repo = open_repo(args)
+    try:
+        info = repo.lock(args.path, args.reason)
+    except RepoError as exc:
+        die(str(exc))
+        return
+    print(f"{green('locked')} {args.path} for {info['owner']}")
+    if args.reason:
+        print(dim(f"  reason: {args.reason}"))
+
+
+def cmd_unlock(args) -> None:
+    repo = open_repo(args)
+    try:
+        repo.unlock(args.path, force=args.force)
+    except RepoError as exc:
+        die(str(exc))
+        return
+    print(f"{yellow('unlocked')} {args.path}")
+
+
+def cmd_locks(args) -> None:
+    repo = open_repo(args)
+    locks = repo.locks()
+    if not locks:
+        print(dim("no locks held"))
+        return
+    for path, info in sorted(locks.items()):
+        who = green(info["owner"] + " (you)") if info["owner"] == repo.author else red(info["owner"])
+        print(f"  {path}  {dim('held by')} {who}  {dim(stamp(info['since']))}")
+        if info.get("reason"):
+            print(f"      {dim(info['reason'])}")
+
+
+def cmd_report(args) -> None:
+    repo = open_repo(args)
+    old, new, label_a, label_b = _resolve_pair(repo, args)
+    diffs = diff_module.diff_trees(repo, old, new, resolution=args.resolution,
+                                paths=args.paths or None)
+    payloads: dict = {}
+    for d in diffs:
+        if d.status == "unchanged":
+            continue
+        old_model = diff_module.model_from_entry(repo, d.path, old.entries.get(d.old_path or d.path))
+        new_model = diff_module.model_from_entry(repo, d.path, new.entries.get(d.path))
+        payloads[d.path] = report_module.viewer_payload(
+            old_model.mesh if old_model else None,
+            new_model.mesh if new_model else None, args.resolution
+        )
+
+    head = repo.head_commit()
+    meta = [
+        ("Repository", os.path.basename(repo.root)),
+        ("Branch", repo.current_branch() or "detached"),
+        ("Before", label_a),
+        ("After", label_b),
+        ("Author", repo.author),
+        ("Generated", report_module.now_stamp()),
+    ]
+    subtitle = args.subtitle or _report_subtitle(repo, label_a, label_b)
+    html_doc = report_module.build_report(
+        args.title or f"{os.path.basename(repo.root)} · {repo.current_branch() or 'detached'}",
+        subtitle, meta, diffs, payloads,
+        footer=f"{len([d for d in diffs if d.status != 'unchanged'])} parts changed",
+    )
+    out = args.out or os.path.join(repo.root, "kerf-report.html")
+    with open(out, "w") as fh:
+        fh.write(html_doc)
+    size = os.path.getsize(out) / 1024
+    print(f"wrote {bold(out)} {dim(f'({size:.0f} KiB)')}")
+
+
+def _report_subtitle(repo: Repo, a: str, b: str) -> str:
+    try:
+        commit = repo.commit_obj(repo.resolve(b))
+        return commit.short()
+    except Exception:                                # noqa: BLE001
+        return f"Geometry comparison between {a} and {b}"
+
+
+def cmd_view(args) -> None:
+    repo = open_repo(args)
+    if ":" in args.target:
+        rev, _, path = args.target.partition(":")
+        model = repo.model_at(rev, path)
+        title = f"{path} at {rev}"
+    else:
+        from .. import model as model_module
+
+        model = model_module.load_file(args.target, repo.config.get("eval_resolution", 56))
+        title = args.target
+    if model.mesh is None:
+        die(f"cannot render {args.target}: {model.error or 'unsupported format'}")
+        return
+    model_diff = diff_module.ModelDiff(path=title, status="added", kind=model.kind,
+                           new_stats=model.stats(), size_new=len(model.data))
+    payload = report_module.viewer_payload(None, model.mesh, args.resolution)
+    html_doc = report_module.build_report(
+        os.path.basename(title), "Single revision preview",
+        [("Model", os.path.basename(title)), ("Format", format_name(title)),
+         ("Author", repo.author), ("Generated", report_module.now_stamp())],
+        [model_diff], {title: payload}, footer="single model preview",
+    )
+    out = args.out or "kerf-view.html"
+    with open(out, "w") as fh:
+        fh.write(html_doc)
+    print(f"wrote {bold(out)}")
+
+
+def cmd_stats(args) -> None:
+    repo = open_repo(args)
+    s = repo.stats()
+    rows = [
+        ("commits", s["commits"]), ("branches", s["branches"]),
+        ("tracked files", s["tracked_files"]), ("objects", s["objects"]),
+        ("store size", f"{s['store_bytes'] / 1024:.1f} KiB"),
+        ("working tree", f"{s['worktree_bytes'] / 1024:.1f} KiB"),
+        ("locks", s["locks"]),
+    ]
+    for key, value in rows:
+        print(f"  {dim(key.ljust(16))} {value}")
+    if s["worktree_bytes"]:
+        ratio = s["store_bytes"] / s["worktree_bytes"]
+        print(f"  {dim('store / worktree'.ljust(16))} {ratio:.2f}×")
+
+
+def cmd_config(args) -> None:
+    repo = open_repo(args)
+    if args.key is None:
+        for k, v in sorted(repo.config.items()):
+            print(f"  {dim(k.ljust(18))} {v}")
+        return
+    if args.value is None:
+        print(repo.config.get(args.key, ""))
+        return
+    value: object = args.value
+    if args.value.isdigit():
+        value = int(args.value)
+    repo.set_config(args.key, value)
+    print(f"{args.key} = {value}")
+
+
+def cmd_export(args) -> None:
+    repo = open_repo(args)
+    count = repo.export(args.rev, args.dest)
+    print(f"exported {count} files from {args.rev} to {args.dest}")
+
+
+def cmd_demo(args) -> None:
+    from ..demo import build_demo
+
+    root = os.path.abspath(args.path)
+    build_demo(root, quiet=args.quiet)
+
+
