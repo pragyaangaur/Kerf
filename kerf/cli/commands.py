@@ -544,8 +544,8 @@ def cmd_equations(args) -> None:
 
     part, label = _load_part(repo, args.target)
     graph = build_graph(part)
-    print(f"{bold(label)}  {dim(f'{len(graph.parameters)} parameters, '
-                              f'{len(graph.fields)} driven dimensions')}")
+    counts = f"{len(graph.parameters)} parameters, {len(graph.fields)} driven dimensions"
+    print(f"{bold(label)}  {dim(counts)}")
     print()
 
     issues = check_equations(part)
