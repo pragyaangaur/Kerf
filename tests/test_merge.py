@@ -68,6 +68,51 @@ class TestMerge(unittest.TestCase):
         _, conflicts, _ = merge_module.merge_parts("p", base, ours, theirs, check_interference=False)
         self.assertEqual(conflicts, [])
 
+    def test_a_merge_that_breaks_an_equation_is_refused(self):
+        # One side renames a parameter, the other writes a dimension that
+        # reads the old name. Each branch builds. The merge would not.
+        base = part(CUBE, {"bolt_pitch": 31})
+        ours = part(CUBE, {"hole_pitch": 31})
+        theirs = part(CUBE + [{
+            "id": "hole", "type": "cylinder", "op": "subtract", "name": "new hole",
+            "radius": 2, "height": 40, "center": ["bolt_pitch/2", 0, 0],
+        }], {"bolt_pitch": 31})
+        _, conflicts, _ = merge_module.merge_parts("p", base, ours, theirs)
+        self.assertEqual([c.scope for c in conflicts], ["equation"])
+        self.assertIn("bolt_pitch", conflicts[0].detail)
+
+    def test_each_branch_builds_on_its_own(self):
+        from kerf.parametric import check_equations
+
+        ours = part(CUBE, {"hole_pitch": 31})
+        theirs = part(CUBE + [{
+            "id": "hole", "type": "cylinder", "op": "subtract",
+            "radius": 2, "height": 40, "center": ["bolt_pitch/2", 0, 0],
+        }], {"bolt_pitch": 31})
+        self.assertEqual(check_equations(ours), [])
+        self.assertEqual(check_equations(theirs), [])
+
+    def test_breakage_that_predates_the_merge_is_not_blamed_on_it(self):
+        broken = {"id": "h", "type": "cylinder", "op": "subtract",
+                  "radius": "missing", "height": 10}
+        base = part(CUBE + [broken])
+        ours = part(CUBE + [broken], {"a": 1})
+        theirs = part(CUBE + [broken], {"b": 2})
+        _, conflicts, _ = merge_module.merge_parts("p", base, ours, theirs)
+        self.assertEqual(conflicts, [])
+
+    def test_the_equation_check_can_be_skipped(self):
+        base = part(CUBE, {"bolt_pitch": 31})
+        ours = part(CUBE, {"hole_pitch": 31})
+        theirs = part(CUBE + [{
+            "id": "hole", "type": "cylinder", "op": "subtract",
+            "radius": 2, "height": 40, "center": ["bolt_pitch/2", 0, 0],
+        }], {"bolt_pitch": 31})
+        _, conflicts, _ = merge_module.merge_parts(
+            "p", base, ours, theirs, check_equations=False
+        )
+        self.assertEqual(conflicts, [])
+
     def test_far_apart_features_do_not_interfere(self):
         base = part(CUBE)
         ours = part(CUBE + [{"id": "left", "type": "sphere", "radius": 2, "center": [-40, 0, 0]}])

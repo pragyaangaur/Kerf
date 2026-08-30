@@ -25,6 +25,38 @@ class TestDiff(unittest.TestCase):
         self.assertAlmostEqual(d.parameters[0].pct, 25.0)
         self.assertIn("d", d.impact)
 
+    def test_a_rule_replacing_a_number_is_not_a_value_change(self):
+        # The number is the same. The author replaced a measurement with a
+        # relationship, and that is the change worth reporting.
+        before = part([{"id": "h", "type": "cylinder", "radius": 2, "height": 9,
+                        "center": ["x", 0, 0]}], {"pitch": 31, "x": 15.5})
+        after = part([{"id": "h", "type": "cylinder", "radius": 2, "height": 9,
+                       "center": ["x", 0, 0]}], {"pitch": 31, "x": "pitch/2"})
+        change = diff_module.diff_parts(before, after).parameters[0]
+        self.assertEqual(change.kind, "rule added")
+        self.assertTrue(change.is_equation)
+        self.assertFalse(change.value_moved)
+        self.assertIn("same number, different rule", change.describe())
+
+    def test_removing_a_rule_is_reported_the_other_way(self):
+        before = part(CUBE, {"pitch": 31, "x": "pitch/2"})
+        after = part(CUBE, {"pitch": 31, "x": 15.5})
+        change = diff_module.diff_parts(before, after).parameters[0]
+        self.assertEqual(change.kind, "rule removed")
+
+    def test_a_plain_number_change_is_a_value_change(self):
+        change = diff_module.diff_parts(part(CUBE, {"t": 5}), part(CUBE, {"t": 7})).parameters[0]
+        self.assertEqual(change.kind, "value")
+        self.assertTrue(change.value_moved)
+        self.assertAlmostEqual(change.pct, 40.0)
+
+    def test_rewriting_an_equation_keeps_the_relation_kind(self):
+        before = part(CUBE, {"w": 20, "x": "w/2"})
+        after = part(CUBE, {"w": 20, "x": "w*0.5 + 0"})
+        change = diff_module.diff_parts(before, after).parameters[0]
+        self.assertEqual(change.kind, "equation")
+        self.assertFalse(change.value_moved)
+
     def test_added_and_removed_features(self):
         a = part(CUBE)
         b = part(CUBE + [{"id": "s", "type": "sphere", "radius": 3, "name": "boss"}])
