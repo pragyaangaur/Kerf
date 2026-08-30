@@ -241,7 +241,7 @@ The Python engine and the JavaScript engine are separate implementations of the 
 python -m pytest tests -q
 ```
 
-There are 108 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
+There are 110 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
 
 ## What this is not
 
