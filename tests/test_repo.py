@@ -151,6 +151,28 @@ class TestRepo(unittest.TestCase):
             os.chdir(previous)
         self.assertEqual(entry.path, "shared.kpart")
 
+    def test_the_working_tree_can_be_compared_like_a_revision(self):
+        self.write("a.kpart", part(CUBE, {"t": 5}).dumps())
+        self.repo.add(["a.kpart"])
+        self.repo.commit("one")
+        self.write("a.kpart", part(CUBE, {"t": 9}).dumps())
+
+        # Nothing was staged, so a comparison against the index has to look at
+        # the files on disk or it reports a change that status just listed.
+        diffs = diff_module.diff_trees(
+            self.repo, self.repo.commit_tree("HEAD"), self.repo.worktree_tree(),
+            volumetric=False,
+        )
+        self.assertEqual([d.path for d in diffs], ["a.kpart"])
+        self.assertEqual(diffs[0].parametric.parameters[0].key, "t")
+
+    def test_a_deleted_file_leaves_the_working_tree(self):
+        self.write("a.kpart", part(CUBE).dumps())
+        self.repo.add(["a.kpart"])
+        self.repo.commit("one")
+        os.remove(os.path.join(self.root, "a.kpart"))
+        self.assertEqual(self.repo.worktree_tree().paths(), [])
+
     def test_export_writes_every_tracked_file(self):
         self.write("a.kpart", part(CUBE).dumps())
         self.repo.add(["a.kpart"])
