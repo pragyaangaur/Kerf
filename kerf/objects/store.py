@@ -70,7 +70,7 @@ class ObjectStore:
     def resolve_prefix(self, prefix: str) -> Optional[str]:
         """Expand a shortened object id. Returns None if the prefix is
         ambiguous or matches nothing."""
-        if len(prefix) < 4:
+        if len(prefix) < 4 or not all(char in "0123456789abcdef" for char in prefix):
             return None
         shard = os.path.join(self.root, prefix[:2])
         if not os.path.isdir(shard):

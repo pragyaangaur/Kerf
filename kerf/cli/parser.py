@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import sys
 from typing import Optional
 
 from ..repo import RepoError
@@ -155,14 +157,32 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Optional[list[str]] = None) -> int:
+    """Run one command.
+
+    Anything that gets out of a command reaches a person, so it arrives as a
+    sentence rather than as a traceback. Set KERF_TRACEBACK=1 to see the
+    whole thing, which is what you want when the fault is in kerf itself
+    rather than in the file it was handed.
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     try:
         args.func(args)
+    except SystemExit:
+        raise
+    except KeyboardInterrupt:
+        print(file=sys.stderr)
+        return 130
+    except BrokenPipeError:                          # `kerf log | head`
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
     except RepoError as exc:
         die(str(exc))
-    except KeyboardInterrupt:
-        return 130
+    except Exception as exc:                         # noqa: BLE001
+        if os.environ.get("KERF_TRACEBACK"):
+            raise
+        die(f"{type(exc).__name__}: {exc}\n"
+            f"       set KERF_TRACEBACK=1 to see where this came from")
     return 0
 
 

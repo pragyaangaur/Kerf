@@ -85,12 +85,15 @@ class RefMixin:
         """Turn HEAD, HEAD~2, a branch name, or a short id into a commit id."""
         rev = rev.strip()
         base, _, back = rev.partition("~")
+        if back and not back.isdigit():
+            raise RepoError(f"{rev!r}: the part after ~ has to be a number of steps back")
         steps = int(back) if back else 0
         oid: Optional[str]
+        branches = self.branches()
         if base in ("HEAD", "@", ""):
             oid = self.head_commit()
-        elif base in self.branches():
-            oid = self.branches()[base]
+        elif base in branches:
+            oid = branches[base]
         elif os.path.exists(self._ref_path(f"refs/tags/{base}")):
             oid = self.read_ref(f"refs/tags/{base}")
         else:

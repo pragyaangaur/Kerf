@@ -15,6 +15,11 @@ from .style import blue, bold, brass, die, dim, fmt_state, green, red, stamp, ye
 from .style import USE_COLOR
 
 
+# Settings the rest of kerf reads as a lattice size. Storing text in one of
+# these breaks the next command to evaluate a part, a long way from here.
+NUMERIC_CONFIG = {"eval_resolution", "diff_resolution"}
+
+
 def open_repo(args) -> Repo:
     """Find the repository the command should act on."""
     return Repo(find_repo(getattr(args, "repo", None) or "."))
@@ -66,7 +71,7 @@ def cmd_status(args) -> None:
             who = info["owner"]
             mark = green("you") if who == repo.author else red(who)
             reason = f", {info['reason']}" if info.get("reason") else ""
-            print(f"  {'🔒' if not not USE_COLOR else '[L]'} {path} {dim('held by')} {mark}{dim(reason)}")
+            print(f"  {'🔒' if USE_COLOR else '[L]'} {path} {dim('held by')} {mark}{dim(reason)}")
 
     staged, unstaged = repo.status()
     if staged:
@@ -315,11 +320,23 @@ def cmd_merge(args) -> None:
         die("nothing to merge into")
         return
     other = repo.resolve(args.branch)
-    base = repo.merge_base(head, other)
 
     if other in repo.ancestors(head):
         print(dim(f"{args.branch} is already merged"))
         return
+
+    # A merge writes over the working tree, both when it fast-forwards and
+    # when it lands a merged part. Anything uncommitted in a file the merge
+    # touches would go without a word, so it is checked before anything is
+    # written rather than after.
+    _, working = repo.status()
+    dirty = sorted(entry.path for entry in working if entry.state != "untracked")
+    if dirty:
+        listed = ", ".join(dirty[:4]) + (f" and {len(dirty) - 4} more" if len(dirty) > 4 else "")
+        die(f"commit or restore your changes before merging: {listed}")
+        return
+
+    base = repo.merge_base(head, other)
     if base == head:
         ref = repo.head_ref()
         if ref:
@@ -359,7 +376,7 @@ def cmd_merge(args) -> None:
         interference = [c for c in result.conflicts if c.scope == "interference"]
         equations = [c for c in result.conflicts if c.scope == "equation"]
         print()
-        print(red(f"{len(result.conflicts)} conflict(s); nothing was committed"))
+        print(red(f"{len(result.conflicts)} conflict(s), nothing was committed"))
         if interference:
             print(yellow("  note: the feature trees merged cleanly but the geometry collides"))
         if equations:
@@ -491,15 +508,29 @@ def _report_subtitle(repo: Repo, a: str, b: str) -> str:
 
 
 def cmd_view(args) -> None:
-    repo = open_repo(args)
+    """Render one model.
+
+    Pointing this at a loose file is a reasonable thing to do from anywhere,
+    so a repository is only required when the target names a revision.
+    """
+    from .. import model as model_module
+
+    repo = None
     if ":" in args.target:
+        repo = open_repo(args)
         rev, _, path = args.target.partition(":")
         model = repo.model_at(rev, path)
         title = f"{path} at {rev}"
     else:
-        from .. import model as model_module
-
-        model = model_module.load_file(args.target, repo.config.get("eval_resolution", 56))
+        if not os.path.isfile(args.target):
+            die(f"no such file: {args.target}")
+            return
+        try:
+            repo = open_repo(args)
+        except RepoError:
+            repo = None
+        resolution = repo.config.get("eval_resolution", 56) if repo else 56
+        model = model_module.load_file(args.target, resolution)
         title = args.target
     if model.mesh is None:
         die(f"cannot render {args.target}: {model.error or 'unsupported format'}")
@@ -510,7 +541,8 @@ def cmd_view(args) -> None:
     html_doc = report_module.build_report(
         os.path.basename(title), "Single revision preview",
         [("Model", os.path.basename(title)), ("Format", format_name(title)),
-         ("Author", repo.author), ("Generated", report_module.now_stamp())],
+         ("Author", repo.author if repo else "—"),
+         ("Generated", report_module.now_stamp())],
         [model_diff], {title: payload}, footer="single model preview",
     )
     out = args.out or "kerf-view.html"
@@ -603,16 +635,27 @@ def cmd_check(args) -> None:
 
     failed = False
     for path in paths:
-        if tree is not None:
-            part = Part.loads(repo.store.get_typed(tree.entries[path].oid, "blob"))
-        else:
-            with open(os.path.join(repo.root, path), "rb") as handle:
-                part = Part.loads(handle.read())
+        try:
+            if tree is not None:
+                data = repo.store.get_typed(tree.entries[path].oid, "blob")
+            else:
+                with open(os.path.join(repo.root, path), "rb") as handle:
+                    data = handle.read()
+            part = Part.loads(data)
+        except Exception as error:                   # noqa: BLE001
+            # A part that will not even load is the loudest failure there is,
+            # and `kerf check` is exactly where it should be reported.
+            print(f"  {red(f'{"broken":>9}')}  {path}")
+            print(f"                      {red(f'cannot be read: {error}')}")
+            failed = True
+            continue
 
         issues = check_part(part, resolution=args.resolution)
         errors = [i for i in issues if i.severity == "error"]
-        mark = red("broken") if errors else (yellow("warning") if issues else green("builds"))
-        print(f"  {mark:>18}  {path}")
+        style, word = (
+            (red, "broken") if errors else ((yellow, "warning") if issues else (green, "builds"))
+        )
+        print(f"  {style(f'{word:>9}')}  {path}")
         for issue in issues:
             style = red if issue.severity == "error" else yellow
             print(f"                      {style(issue.describe())}")
@@ -694,7 +737,16 @@ def cmd_config(args) -> None:
         print(repo.config.get(args.key, ""))
         return
     value: object = args.value
-    if args.value.isdigit():
+    if args.key in NUMERIC_CONFIG:
+        try:
+            value = int(args.value)
+        except ValueError:
+            die(f"{args.key} has to be a whole number, not {args.value!r}")
+            return
+        if value < 4:
+            die(f"{args.key} has to be at least 4")
+            return
+    elif args.value.lstrip("-").isdigit():
         value = int(args.value)
     repo.set_config(args.key, value)
     print(f"{args.key} = {value}")
