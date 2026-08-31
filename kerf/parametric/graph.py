@@ -16,7 +16,7 @@ answers "what does this drive".
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Iterable
+from typing import Any
 
 from .expr import expression_dependencies
 from .features import ENUM_KEYS
@@ -175,15 +175,6 @@ class EquationGraph:
         return sorted(
             name for name in self.parameters if not self.readers_of(name)
         )
-
-
-def _reads_of(value: Any) -> set[str]:
-    if isinstance(value, (list, tuple)):
-        found: set[str] = set()
-        for item in value:
-            found |= expression_dependencies(item)
-        return found
-    return expression_dependencies(value)
 
 
 def build_graph(part) -> EquationGraph:

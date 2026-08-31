@@ -15,6 +15,14 @@ class Commit:
     meta: dict[str, str] = field(default_factory=dict)
 
     def serialize(self) -> bytes:
+        # The header is one field per line, and the message is everything
+        # after the first blank line. A newline in a header field would move
+        # the boundary and change what the commit says.
+        if "\n" in self.author:
+            raise ValueError("an author cannot contain a newline")
+        for key, value in self.meta.items():
+            if "\n" in key or "\n" in value:
+                raise ValueError(f"commit metadata {key!r} cannot contain a newline")
         lines = [f"tree {self.tree}"]
         lines += [f"parent {parent}" for parent in self.parents]
         lines.append(f"author {self.author}")

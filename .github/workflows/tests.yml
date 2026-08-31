@@ -16,6 +16,12 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v4
+        # The playground engine runs under node so the suite can check that it
+        # still agrees with the Python one. Those tests skip without it, which
+        # would quietly turn the check off.
+        with:
+          node-version: "22"
       - name: Install
         run: |
           python -m pip install --upgrade pip
@@ -27,6 +33,8 @@ jobs:
         run: python -m compileall -q kerf tests
       - name: Run the test suite
         run: python -m pytest tests -q
+      - name: Confirm the two engines were actually compared
+        run: python -m pytest tests/test_engine_parity.py -q --no-header -rN
       - name: Build the worked example
         run: |
           python -m kerf demo /tmp/demo --quiet

@@ -20,6 +20,11 @@ class TreeEntry:
     size: int = 0
 
     def line(self) -> str:
+        # A tree is one entry per line, tab separated. A path holding either
+        # separator would write an object that reads back as a different tree
+        # entirely, so it is refused here rather than stored.
+        if "\t" in self.path or "\n" in self.path:
+            raise ValueError(f"a tracked path cannot contain a tab or a newline: {self.path!r}")
         return "\t".join([self.kind, self.oid, self.gid, str(self.size), self.path])
 
     @staticmethod

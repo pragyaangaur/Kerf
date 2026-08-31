@@ -22,7 +22,7 @@ def e(text) -> str:
     return html.escape(str(text))
 
 
-def _num(v: float, digits: int = 3) -> str:
+def _num(v: float) -> str:
     """Format a measurement for a table cell."""
     if v is None:
         return "—"

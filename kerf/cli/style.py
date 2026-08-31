@@ -1,15 +1,30 @@
 """Colour and formatting for terminal output.
 
 Colour is switched off when output is piped or when NO_COLOR is set, so the
-same commands can be read by a person and by a script.
+same commands can be read by a person and by a script. FORCE_COLOR turns it
+back on, which is what you want when piping into a pager that understands it.
+
+Padding belongs inside the colour call, never outside it. Escape codes are
+characters as far as a format specifier is concerned, so padding a coloured
+string pads it to the wrong width and the column stops lining up.
 """
 
 from __future__ import annotations
 
 import datetime
+import os
 import sys
 
-USE_COLOR = not bool(__import__("os").environ.get("NO_COLOR")) and sys.stdout.isatty()
+
+def _use_color() -> bool:
+    if os.environ.get("NO_COLOR"):
+        return False
+    if os.environ.get("FORCE_COLOR"):
+        return True
+    return sys.stdout.isatty()
+
+
+USE_COLOR = _use_color()
 
 
 def paint(text: str, code: str) -> str:
@@ -40,8 +55,9 @@ def blue(text: str) -> str:
     return paint(text, "36")
 
 
-def brass(text: str) -> str:
-    return paint(text, "33")
+# Object ids and branch names, which read better in the same warm tone as a
+# warning without meaning the same thing.
+brass = yellow
 
 
 STATE_STYLE = {
