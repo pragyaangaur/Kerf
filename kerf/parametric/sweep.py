@@ -82,24 +82,39 @@ class SweepResult:
         return not self.failures()
 
     def summary(self) -> str:
+        """One sentence a person can act on.
+
+        Three things can be worth saying: the span that builds, how many
+        values did not, and the first value that builds into something that
+        looks wrong. They are joined as clauses rather than strung together
+        with one 'and' after another.
+        """
+        clauses: list[str] = []
+        if self.robust():
+            span = f"{self.points[0].value:g} to {self.points[-1].value:g}"
+            clauses.append(f"{self.parameter} builds across {span}")
+        else:
+            working = self.working_range()
+            if working is None:
+                return f"{self.parameter} fails at every value tried"
+            clauses.append(
+                f"{self.parameter} builds from {working[0]:g} to {working[1]:g}"
+            )
+            clauses.append(
+                f"{len(self.failures())} of {len(self.points)} values fail"
+            )
+
         warned = self.warnings()
-        note = ""
         if warned:
             first = warned[0]
             detail = next(
                 (i.message for i in first.issues if i.severity == "warning"), "looks wrong"
             )
-            note = f", and at {first.value:g} the part {detail}"
-        if self.robust():
-            span = f"{self.points[0].value:g} to {self.points[-1].value:g}"
-            return f"{self.parameter} builds across {span}{note}"
-        working = self.working_range()
-        if working is None:
-            return f"{self.parameter} fails at every value tried"
-        return (
-            f"{self.parameter} builds from {working[0]:g} to {working[1]:g}, "
-            f"and {len(self.failures())} of {len(self.points)} values fail{note}"
-        )
+            clauses.append(f"at {first.value:g} the part {detail}")
+
+        if len(clauses) == 1:
+            return clauses[0]
+        return ", ".join(clauses[:-1]) + f", and {clauses[-1]}"
 
     def volume_bars(self, width: int = 24) -> list[str]:
         """A small bar per step, so the trend is visible in a terminal."""

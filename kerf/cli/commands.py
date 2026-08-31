@@ -190,7 +190,10 @@ def _print_detail(d: diff_module.ModelDiff, indent: str, verbose: bool) -> None:
     if p and not p.empty():
         for ch in p.parameters:
             impact = p.impact.get(ch.key, [])
-            tail = dim(f"   drives {', '.join(impact[:3])}") if impact else ""
+            # Say how many were left out. A parameter that drives four holes
+            # and one that drives fourteen otherwise print the same line.
+            extra = f" +{len(impact) - 3} more" if len(impact) > 3 else ""
+            tail = dim(f"   drives {', '.join(impact[:3])}{extra}") if impact else ""
             print(f"{indent}{yellow('param')} {ch.describe()}{tail}")
         for k, v in p.parameters_added.items():
             print(f"{indent}{green('param')} {k} = {v}  {dim('(new)')}")
@@ -592,12 +595,19 @@ def cmd_equations(args) -> None:
     if not issues:
         values = part.resolved_parameters()
 
+    # The equations line up in one column and what they drive in another, so
+    # the shape of the model is readable down the page.
+    rows = []
     for line in format_graph(graph, values):
         name, _, rest = line.partition(" = ")
         expression, _, drives = rest.partition("   drives ")
+        rows.append((name, expression.rstrip(), drives))
+    width = max((len(f"{name} = {expression}") for name, expression, _ in rows), default=0)
+    for name, expression, drives in rows:
+        head = f"{name} = {expression}"
         text = f"  {brass(name)} = {expression}"
         if drives:
-            text += dim(f"   drives {drives}")
+            text += " " * (width - len(head) + 3) + dim(f"drives {drives}")
         print(text)
 
     if args.explain:

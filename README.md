@@ -43,6 +43,13 @@ cd my-demo
 kerf log --stat
 ```
 
+It leaves five branches behind, and they are meant to be merged in order,
+because each one is interesting only against the result of the last. The demo
+prints the order when it finishes. Two of them are the cases the rest of this
+page is about: `cable-tie` merges cleanly as a tree and collides in space with
+the slots merged before it, and `tidy-names` renames a parameter that the
+branch merged before it had just written a dimension against.
+
 ## What it does that git cannot
 
 ### It knows a re-export is not a change
@@ -97,7 +104,11 @@ parts/bracket.kpart  8 parameters, 32 driven dimensions
   bolt_d = 3.6      drives motor bolt NW, motor bolt NE, motor bolt SW and 1 more
   bolt_pitch = 31   drives motor bolt NW, motor bolt NE, motor bolt SW and 1 more
   bore_d = 22       drives motor bore
+  plate_d = 46      drives base plate, riser wall, motor face and 5 more
   plate_t = 7       drives base plate
+  plate_w = 60      drives base plate, riser wall, motor face
+  rise = 40         drives riser wall, motor face, motor bore and 4 more
+  wall_t = 5        drives riser wall, motor face, motor bore and 4 more
 ```
 
 Every guide to parametric CAD says to drive each variable across its expected range and check the model still rebuilds, because equations that hold at the nominal value often fail at the extremes. Doing that by hand means typing a number, waiting for a rebuild, and reading the tree, over and over. Kerf evaluates a part in a few milliseconds, so it can do the sweep and report the range the model survives.
@@ -125,7 +136,7 @@ $ kerf sweep parts/bracket.kpart plate_w --from 8 --to 110 --steps 9
 One person renames `bolt_pitch` to `hole_pitch`. Another adds a hole positioned at `bolt_pitch/2`. Both branches build. The merged part references a name that no longer exists, and the person who finds out is whoever opens the file next.
 
 ```
-$ kerf merge tidy-names
+$ kerf merge tidy-names          # after fifth-bolt has been merged
 
    conflict  parts/bracket.kpart
              conflict: equation bolt_e.center.x: reads 'bolt_pitch', which the
@@ -143,7 +154,7 @@ No amount of care on either branch prevents this, because the merge creates the 
 Kerf merges feature by feature and parameter by parameter. It then does something no text merge can do, which is to evaluate the merged solid and check whether the two sides' additions occupy the same space.
 
 ```
-$ kerf merge cable-tie
+$ kerf merge cable-tie           # after mount-slots has been merged
 
 merging cable-tie into main
 
@@ -217,7 +228,8 @@ A parameter table and an ordered feature tree, evaluated to geometry through sig
 ```
 kerf/
   objects/      content addressed store, and the three object types
-  geometry/     meshes, fingerprinting, tolerance equivalence, voxel grids
+  geometry/     meshes, fingerprinting, tolerance equivalence, voxel grids,
+                connected components
   parametric/   expressions, features, distance fields, surface nets, parts,
                 the equation graph, model validity, parameter sweeps
   formats/      STL and OBJ
@@ -233,7 +245,9 @@ web/            the playground, which runs the same algorithms in JavaScript
   ui/           the three tabs
 ```
 
-The Python engine and the JavaScript engine are separate implementations of the same design. They agree on volumes to the last digit the tessellation can support, which is checked by hand rather than by a shared test suite.
+The Python engine and the JavaScript engine are separate implementations of the same design. The test suite puts the same questions to both and compares the answers, so the claim that they agree is checked rather than asserted. It runs the browser engine under node, and skips when node is not installed.
+
+That check was worth writing. It found three places where the two had drifted, including a tessellator in the browser that was leaving the mesh open along one edge of its own lattice.
 
 ## Running the tests
 
@@ -241,7 +255,9 @@ The Python engine and the JavaScript engine are separate implementations of the 
 python -m pytest tests -q
 ```
 
-There are 115 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, and the repository.
+There are 155 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, the repository, the command line, and the worked example end to end.
+
+A few of them run the playground's JavaScript engine under node and compare its answers to the Python one. Node is not a dependency of kerf, and those tests skip without it.
 
 ## What this is not
 
