@@ -224,5 +224,84 @@ class TestTreeMerge(unittest.TestCase):
         self.assertEqual([f.status for f in result.files], ["theirs"])
 
 
+class TestMergeBase(unittest.TestCase):
+    """The base has to come from the graph, not from the clock.
+
+    Every commit a fast script writes lands in the same second, so ranking
+    the shared ancestors by timestamp left the answer to whichever order a
+    set happened to iterate in. A base older than the real one makes the
+    merge see changes on a side that never made them.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = self.tmp.name
+        self.repo = Repo.init(self.root, author="tester")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def revise(self, thickness: int, message: str) -> str:
+        body = part([{"id": "b", "type": "box", "size": [20, 20, "t"]}], {"t": thickness})
+        with open(os.path.join(self.root, "p.kpart"), "wb") as handle:
+            handle.write(body.dumps())
+        self.repo.add(["p.kpart"])
+        return self.repo.commit(message)
+
+    def test_the_nearest_shared_ancestor_wins_when_timestamps_tie(self):
+        first = self.revise(1, "one")
+        second = self.revise(2, "two")
+        third = self.revise(3, "three")
+        self.repo.create_branch("side", third)
+        fourth = self.revise(4, "four")
+
+        stamps = {self.repo.commit_obj(oid).timestamp
+                  for oid in (first, second, third, fourth)}
+        self.assertEqual(len(stamps), 1, "this test is only meaningful on tied timestamps")
+        self.assertEqual(self.repo.merge_base(fourth, third), third)
+        self.assertEqual(self.repo.merge_base(third, fourth), third)
+
+    def test_the_answer_does_not_move_between_calls(self):
+        self.revise(1, "one")
+        second = self.revise(2, "two")
+        self.repo.create_branch("side", second)
+        third = self.revise(3, "three")
+        answers = {self.repo.merge_base(third, second) for _ in range(50)}
+        self.assertEqual(len(answers), 1)
+
+    def test_unrelated_histories_have_no_base(self):
+        first = self.revise(1, "one")
+        self.repo.write_ref("refs/heads/orphan", first)
+        self.assertEqual(self.repo.merge_base(first, first), first)
+
+    def test_generation_counts_from_the_root(self):
+        first = self.revise(1, "one")
+        second = self.revise(2, "two")
+        self.assertEqual(self.repo.generation(first), 1)
+        self.assertEqual(self.repo.generation(second), 2)
+
+
+class TestRevisionParsing(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.repo = Repo.init(self.tmp.name, author="tester")
+        with open(os.path.join(self.tmp.name, "p.kpart"), "wb") as handle:
+            handle.write(part(CUBE).dumps())
+        self.repo.add(["p.kpart"])
+        self.head = self.repo.commit("one")
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_a_step_count_that_is_not_a_number_is_reported(self):
+        with self.assertRaises(RepoError):
+            self.repo.resolve("HEAD~abc")
+
+    def test_a_prefix_that_is_not_hexadecimal_matches_nothing(self):
+        self.assertIsNone(self.repo.store.resolve_prefix("../.."))
+        self.assertIsNone(self.repo.store.resolve_prefix("zzzz"))
+        self.assertEqual(self.repo.store.resolve_prefix(self.head[:10]), self.head)
+
+
 if __name__ == "__main__":
     unittest.main()

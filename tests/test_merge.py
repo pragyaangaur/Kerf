@@ -121,5 +121,56 @@ class TestMerge(unittest.TestCase):
         self.assertEqual(conflicts, [])
 
 
+class TestFeatureOrder(unittest.TestCase):
+    """Reordering used to crash whenever either side had also added a feature.
+
+    The sort key called list.index on the list being sorted, and CPython
+    empties a list while it runs the key over it, so the lookup raised.
+    """
+
+    @staticmethod
+    def tree(ids):
+        return part([{"id": name, "type": "box", "size": [1, 1, 1],
+                      "center": [index * 10, 0, 0]}
+                     for index, name in enumerate(ids)])
+
+    def test_their_order_wins_when_only_they_reordered(self):
+        merged, conflicts, _ = merge_module.merge_parts(
+            "p", self.tree("ab"), self.tree("ab"), self.tree("ba"),
+        )
+        self.assertEqual([item.id for item in merged.features], ["b", "a"])
+        self.assertEqual(conflicts, [])
+
+    def test_a_reorder_alongside_an_addition_does_not_crash(self):
+        merged, _, _ = merge_module.merge_parts(
+            "p", self.tree("ab"), self.tree("ab"), self.tree("bac"),
+        )
+        self.assertEqual([item.id for item in merged.features], ["b", "a", "c"])
+
+    def test_a_feature_only_we_have_keeps_the_place_it_holds(self):
+        merged, _, _ = merge_module.merge_parts(
+            "p", self.tree("ab"), self.tree("azb"), self.tree("ba"),
+        )
+        self.assertEqual([item.id for item in merged.features], ["b", "a", "z"])
+
+    def test_both_sides_reordering_is_a_conflict(self):
+        _, conflicts, _ = merge_module.merge_parts(
+            "p", self.tree("abc"), self.tree("bca"), self.tree("cab"),
+        )
+        self.assertTrue(any(c.scope == "order" for c in conflicts))
+
+
+class TestMergedPartOwnsItsFeatures(unittest.TestCase):
+    def test_a_feature_taken_from_theirs_is_copied_not_shared(self):
+        base = part(CUBE)
+        ours = part(CUBE)
+        theirs = part(CUBE + [{"id": "new", "type": "sphere", "radius": 2,
+                               "center": [40, 0, 0]}])
+        merged, _, _ = merge_module.merge_parts("p", base, ours, theirs)
+        self.assertIsNot(merged.feature("new"), theirs.feature("new"))
+        merged.feature("new").params["radius"] = 99
+        self.assertEqual(theirs.feature("new").params["radius"], 2)
+
+
 if __name__ == "__main__":
     unittest.main()
