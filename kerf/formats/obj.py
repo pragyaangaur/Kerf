@@ -19,12 +19,29 @@ def load(data: bytes) -> Mesh:
         if not parts:
             continue
         if parts[0] == "v" and len(parts) >= 4:
-            verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            try:
+                verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            except ValueError:
+                continue
         elif parts[0] == "f" and len(parts) >= 4:
             idx = []
             for tok in parts[1:]:
-                raw = int(tok.split("/")[0])
+                try:
+                    raw = int(tok.split("/")[0])
+                except ValueError:
+                    idx = []
+                    break
+                if raw == 0:
+                    idx = []
+                    break
+                # A negative index counts back from the vertices seen so far,
+                # which is why this is resolved as the file is read.
                 idx.append(raw - 1 if raw > 0 else len(verts) + raw)
+            # A face that points past the vertex list is a corrupt file, and
+            # keeping it turns every later measurement into an IndexError far
+            # away from the line that caused it.
+            if not idx or any(i < 0 or i >= len(verts) for i in idx):
+                continue
             for i in range(1, len(idx) - 1):     # split the polygon into a fan
                 faces.append((idx[0], idx[i], idx[i + 1]))
     v = np.asarray(verts, dtype=np.float64) if verts else np.zeros((0, 3))

@@ -8,11 +8,17 @@ import numpy as np
 
 from ..geometry import Mesh
 
+# The layout of one triangle in a binary STL: a normal, three corners, and
+# two bytes of attribute nobody uses.
+RECORD = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
+
 
 def looks_binary(data: bytes) -> bool:
     if len(data) < 84:
         return False
-    if data[:5].lstrip().lower().startswith(b"solid"):
+    # Leading whitespace is legal in a text STL, so strip before looking for
+    # the keyword rather than after slicing it off.
+    if data[:80].lstrip().lower().startswith(b"solid"):
         # A text style header proves nothing, because plenty of binary files
         # start with the word solid. The file length is the reliable test: a
         # binary STL is exactly 84 bytes plus 50 bytes per triangle.
@@ -32,8 +38,7 @@ def _load_binary(data: bytes) -> Mesh:
     expected = 84 + count * 50
     if len(data) < expected:
         raise ValueError(f"truncated binary STL: want {expected} bytes, have {len(data)}")
-    rec = np.dtype([("n", "<f4", 3), ("v", "<f4", (3, 3)), ("attr", "<u2")])
-    arr = np.frombuffer(data[84:expected], dtype=rec, count=count)
+    arr = np.frombuffer(data[84:expected], dtype=RECORD, count=count)
     return Mesh.from_triangles(arr["v"].astype(np.float64))
 
 
@@ -42,22 +47,34 @@ def _load_ascii(data: bytes) -> Mesh:
     for line in data.decode("utf-8", "replace").splitlines():
         parts = line.split()
         if parts and parts[0] == "vertex" and len(parts) >= 4:
-            verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            try:
+                verts.append([float(parts[1]), float(parts[2]), float(parts[3])])
+            except ValueError:
+                continue
     if len(verts) % 3:
         verts = verts[: len(verts) - len(verts) % 3]
     return Mesh.from_triangles(np.asarray(verts, dtype=np.float64).reshape(-1, 3, 3))
 
 
 def dump_binary(mesh: Mesh, header: bytes = b"kerf") -> bytes:
+    """Write a binary STL.
+
+    The records are filled in one array rather than packed a triangle at a
+    time, which matters because an exported part runs to hundreds of
+    thousands of them.
+    """
     tris = mesh.triangles().astype(np.float32)
     normals = np.cross(tris[:, 1] - tris[:, 0], tris[:, 2] - tris[:, 0])
     lengths = np.linalg.norm(normals, axis=1, keepdims=True)
     normals = np.divide(normals, np.where(lengths == 0, 1, lengths))
-    out = bytearray(header[:80].ljust(80, b"\0"))
-    out += struct.pack("<I", len(tris))
-    for n, t in zip(normals.astype(np.float32), tris):
-        out += struct.pack("<12fH", *n, *t[0], *t[1], *t[2], 0)
-    return bytes(out)
+    records = np.zeros(len(tris), dtype=RECORD)
+    records["n"] = normals.astype(np.float32)
+    records["v"] = tris
+    return (
+        bytes(bytearray(header[:80].ljust(80, b"\0")))
+        + struct.pack("<I", len(tris))
+        + records.tobytes()
+    )
 
 
 def dump_ascii(mesh: Mesh, name: str = "kerf") -> bytes:
