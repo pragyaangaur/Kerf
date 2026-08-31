@@ -255,7 +255,7 @@ That check was worth writing. It found three places where the two had drifted, i
 python -m pytest tests -q
 ```
 
-There are 155 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, the repository, the command line, and the worked example end to end.
+There are 160 tests covering the geometry kernel, the fingerprint invariances, the expression sandbox, the equation graph, model validity, parameter sweeps, diffing, merging, the repository, the command line, and the worked example end to end.
 
 A few of them run the playground's JavaScript engine under node and compare its answers to the Python one. Node is not a dependency of kerf, and those tests skip without it.
 
