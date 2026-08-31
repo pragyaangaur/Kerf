@@ -9,9 +9,17 @@
 import { clonePart } from './part.js';
 import { checkPart, measureSolid } from './validity.js';
 
+// A range to try when the caller did not name one. Dimensions are rarely
+// useful once they cross zero, so the range stops short of it rather than
+// changing sign, and a negative parameter is swept away from zero in its own
+// direction instead of being dragged across it.
 export function defaultRange(value, spread = 0.6) {
   const magnitude = Math.abs(value) || 1;
-  return [Math.max(value - magnitude * spread, magnitude * 0.05), value + magnitude * spread];
+  const floor = magnitude * 0.05;
+  if (value < 0) {
+    return [value - magnitude * spread, Math.min(value + magnitude * spread, -floor)];
+  }
+  return [Math.max(value - magnitude * spread, floor), value + magnitude * spread];
 }
 
 export function sweepParameter(part, name, start, stop, steps = 11, resolution = 22) {

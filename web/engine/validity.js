@@ -77,9 +77,24 @@ export function checkFeatures(part, values) {
 // Volume and body count without tessellating. Counting whole cells aliases
 // badly on a face lying along the lattice, so each cell contributes the
 // fraction the distance says it fills.
+// A lattice of cell centres rather than cell corners.
+//
+// Each sample here stands for one whole cell, and the fraction of that cell
+// the surface leaves filled is what the volume adds up. Sampling the corners
+// instead counts a shell of half cells at full weight, which is a real bias
+// and put this engine a tenth of a percent above the Python one. The command
+// line tool measures on cell centres, and so does this.
+function cellCentres(grid) {
+  return {
+    origin: grid.origin.map((value) => value + grid.pitch / 2),
+    pitch: grid.pitch,
+    dims: grid.dims.map((size) => Math.max(1, size - 1)),
+  };
+}
+
 export function measureSolid(part, resolution = 26) {
   const params = resolvedParameters(part);
-  const grid = buildGrid(partBounds(part, params), resolution);
+  const grid = cellCentres(buildGrid(partBounds(part, params), resolution));
   const field = evaluateField(activeFeatures(part), params, grid);
   const cell = grid.pitch ** 3;
   let filled = 0;

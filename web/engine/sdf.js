@@ -26,10 +26,79 @@ export function featureBounds(feature, params) {
     const tube = resolve(feature.tube ?? 0.25, params);
     half = [ring + tube, ring + tube, tube];
   }
+  if (feature.rotate) {
+    half = rotatedHalfExtent(half, resolveVec(feature.rotate, params));
+  }
   return [
     [centre[0] - half[0], centre[1] - half[1], centre[2] - half[2]],
     [centre[0] + half[0], centre[1] + half[1], centre[2] + half[2]],
   ];
+}
+
+// Carry a point into the feature's own frame, which is what the field does
+// before it measures anything. Kept beside featureBounds so the two cannot
+// drift apart.
+function toLocal([x, y, z], [rx, ry, rz]) {
+  let px = x;
+  let py = y;
+  let pz = z;
+  if (rx) {
+    const c = Math.cos(-rx);
+    const s = Math.sin(-rx);
+    const ny = py * c - pz * s;
+    pz = py * s + pz * c;
+    py = ny;
+  }
+  if (ry) {
+    const c = Math.cos(-ry);
+    const s = Math.sin(-ry);
+    const nx = px * c - pz * s;
+    pz = px * s + pz * c;
+    px = nx;
+  }
+  if (rz) {
+    const c = Math.cos(-rz);
+    const s = Math.sin(-rz);
+    const nx = px * c - py * s;
+    py = px * s + py * c;
+    px = nx;
+  }
+  return [px, py, pz];
+}
+
+// Half extent of the box that holds a rotated box. Every corner is carried
+// through the inverse of the transform the field applies, and the box around
+// those eight points is the answer: exact for a box, and a safe
+// over-estimate for the round shapes, which is the right way round for
+// something that only sizes a lattice.
+function rotatedHalfExtent(half, degrees) {
+  const radians = degrees.map((d) => (d * Math.PI) / 180);
+  if (!radians.some((value) => value)) return half;
+  // toLocal maps world to local, so its transpose maps local back out.
+  const columns = [
+    toLocal([1, 0, 0], radians),
+    toLocal([0, 1, 0], radians),
+    toLocal([0, 0, 1], radians),
+  ];
+  const out = [0, 0, 0];
+  for (const sx of [-1, 1]) {
+    for (const sy of [-1, 1]) {
+      for (const sz of [-1, 1]) {
+        const corner = [sx * half[0], sy * half[1], sz * half[2]];
+        for (let axis = 0; axis < 3; axis += 1) {
+          // columns[axis] is the column of the world-to-local matrix, so
+          // reading down it applies that matrix's transpose, which is the
+          // local-to-world direction wanted here.
+          const value =
+            corner[0] * columns[axis][0] +
+            corner[1] * columns[axis][1] +
+            corner[2] * columns[axis][2];
+          out[axis] = Math.max(out[axis], Math.abs(value));
+        }
+      }
+    }
+  }
+  return out;
 }
 
 // Compile a feature into a closure with its numbers already resolved.

@@ -50,14 +50,14 @@ function tokenize(text) {
       index += 1;
       continue;
     }
-    if (char === '*' || char === '^') { tokens.push({ type: '^' }); index += 1; continue; }
+    if (char === '^') { tokens.push({ type: '^' }); index += 1; continue; }
     throw new ExpressionError(`unexpected character ${char} in ${text}`);
   }
   return tokens;
 }
 
 function parse(text) {
-  const tokens = tokenize(text.replace(/\*\*/g, '^').replace(/\^/g, '^'));
+  const tokens = tokenize(text.replace(/\*\*/g, '^'));
   let position = 0;
 
   const peek = () => tokens[position];
@@ -165,7 +165,14 @@ function walk(node, params) {
 }
 
 export function evaluateExpression(text, params) {
-  return walk(parseCached(text), params);
+  const value = walk(parseCached(text), params);
+  // Dividing by zero gives Infinity here rather than raising, and a part
+  // built on Infinity fails much later and much less clearly. The Python
+  // engine reports this as a rebuild error, so this one does too.
+  if (!Number.isFinite(value)) {
+    throw new ExpressionError(`${text} does not resolve to a finite number`);
+  }
+  return value;
 }
 
 export function resolve(value, params) {

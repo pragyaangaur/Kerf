@@ -87,25 +87,45 @@ export function surfaceNets(field, grid) {
     }
   };
 
-  for (let i = 1; i < sx - 1; i += 1) {
+  // One pass per face direction. The direction being crossed starts at zero,
+  // because the surface can cross between the first two sample layers, and
+  // the two directions across the face start at one so all four neighbouring
+  // cells exist. Running a single loop from one for all three directions
+  // drops that first layer of faces and leaves the mesh with a hole in it.
+  //
+  // The field is negative inside, so the outward face points away from the
+  // solid. Each direction is handed differently, and y is the odd one.
+  for (let i = 0; i < sx - 1; i += 1) {
     for (let j = 1; j < sy - 1; j += 1) {
       for (let k = 1; k < sz - 1; k += 1) {
         const here = at(i, j, k) < 0;
-        // The field is negative inside, so the outward face points away from
-        // the solid. Each axis is handed differently, and y is the odd one.
-        if (i + 1 < sx && here !== (at(i + 1, j, k) < 0)) {
+        if (here !== (at(i + 1, j, k) < 0)) {
           pushQuad(
             vertexAt(i, j - 1, k - 1), vertexAt(i, j, k - 1),
             vertexAt(i, j, k), vertexAt(i, j - 1, k), !here,
           );
         }
-        if (j + 1 < sy && here !== (at(i, j + 1, k) < 0)) {
+      }
+    }
+  }
+  for (let j = 0; j < sy - 1; j += 1) {
+    for (let i = 1; i < sx - 1; i += 1) {
+      for (let k = 1; k < sz - 1; k += 1) {
+        const here = at(i, j, k) < 0;
+        if (here !== (at(i, j + 1, k) < 0)) {
           pushQuad(
             vertexAt(i - 1, j, k - 1), vertexAt(i, j, k - 1),
             vertexAt(i, j, k), vertexAt(i - 1, j, k), here,
           );
         }
-        if (k + 1 < sz && here !== (at(i, j, k + 1) < 0)) {
+      }
+    }
+  }
+  for (let k = 0; k < sz - 1; k += 1) {
+    for (let i = 1; i < sx - 1; i += 1) {
+      for (let j = 1; j < sy - 1; j += 1) {
+        const here = at(i, j, k) < 0;
+        if (here !== (at(i, j, k + 1) < 0)) {
           pushQuad(
             vertexAt(i - 1, j - 1, k), vertexAt(i, j - 1, k),
             vertexAt(i, j, k), vertexAt(i - 1, j, k), !here,
