@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 from .part import Part
-from .validity import ModelIssue, check_part
+from .validity import ModelIssue, inspect_part
 
 
 @dataclass
@@ -137,14 +137,8 @@ def sweep_parameter(
         value = start + (stop - start) * index / (steps - 1)
         trial = part.copy()
         trial.parameters[name] = value
-        issues = check_part(trial, geometry=True, resolution=resolution)
+        issues, volume, bodies = inspect_part(trial, resolution)
         errors = [issue for issue in issues if issue.severity == "error"]
-        volume = None
-        bodies = 0
-        if not errors:
-            from .validity import measure_solid
-
-            volume, bodies = measure_solid(trial, resolution)
         result.points.append(
             SweepPoint(value=value, ok=not errors, volume=volume, bodies=bodies, issues=issues)
         )
@@ -154,12 +148,16 @@ def sweep_parameter(
 def default_range(value: float, spread: float = 0.6) -> tuple[float, float]:
     """A range to try when the caller did not name one.
 
-    Dimensions are rarely useful at or below zero, so the low end stops just
-    above it rather than crossing over.
+    Dimensions are rarely useful once they cross zero, so the range stops
+    short of it rather than changing sign. A negative parameter is a real
+    thing, usually an offset, and it is swept away from zero in its own
+    direction rather than being dragged across it.
     """
     magnitude = abs(value) or 1.0
-    low = max(value - magnitude * spread, magnitude * 0.05)
-    return low, value + magnitude * spread
+    floor = magnitude * 0.05
+    if value < 0:
+        return value - magnitude * spread, min(value + magnitude * spread, -floor)
+    return max(value - magnitude * spread, floor), value + magnitude * spread
 
 
 def sweep_all(

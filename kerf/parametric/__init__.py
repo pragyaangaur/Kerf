@@ -13,7 +13,14 @@ from .part import Part
 from .sdf import feature_bounds, feature_sdf
 from .sweep import SweepPoint, SweepResult, default_range, sweep_all, sweep_parameter
 from .tessellate import surface_nets
-from .validity import ModelIssue, check_equations, check_part, is_buildable, measure_solid
+from .validity import (
+    ModelIssue,
+    check_equations,
+    check_part,
+    inspect_part,
+    is_buildable,
+    measure_solid,
+)
 
 __all__ = [
     "ENUM_KEYS",
@@ -31,6 +38,7 @@ __all__ = [
     "build_graph",
     "check_equations",
     "check_part",
+    "inspect_part",
     "default_range",
     "format_graph",
     "is_buildable",

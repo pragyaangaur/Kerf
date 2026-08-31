@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from typing import Optional
 
 import numpy as np
 
@@ -134,37 +135,59 @@ def measure_solid(part, resolution: int = 32) -> tuple[float, int]:
     return volume, bodies
 
 
-def check_part(part, geometry: bool = True, resolution: int = 32) -> list[ModelIssue]:
-    """Every check, in the order that makes the first failure the useful one."""
+def inspect_part(
+    part, resolution: int = 32
+) -> tuple[list[ModelIssue], Optional[float], int]:
+    """Every check, plus the measurements the geometry check already took.
+
+    A sweep asks the same question a few dozen times over, and the volume it
+    wants to chart is a by-product of the check it has just run. Handing it
+    back costs nothing and halves the work.
+    """
     issues = check_equations(part)
     if issues:
-        return issues
+        return issues, None, 0
 
     values = part.resolved_parameters()
     issues.extend(check_features(part, values))
-    if issues or not geometry:
-        return issues
+    if issues:
+        return issues, None, 0
 
     if not part.active_features():
-        return [ModelIssue("error", "geometry", "part", "has no features left to build")]
+        return [ModelIssue("error", "geometry", "part", "has no features left to build")], None, 0
 
     try:
         volume, bodies = measure_solid(part, resolution)
     except Exception as error:               # noqa: BLE001
-        return [ModelIssue("error", "geometry", "part", f"cannot be evaluated: {error}")]
+        return (
+            [ModelIssue("error", "geometry", "part", f"cannot be evaluated: {error}")],
+            None,
+            0,
+        )
 
     if volume <= 0:
         issues.append(
             ModelIssue("error", "geometry", "part", "builds to nothing at this size")
         )
-    elif bodies > 1:
+        return issues, volume, bodies
+    if bodies > 1:
         issues.append(
             ModelIssue(
                 "warning", "geometry", "part",
                 f"has fallen into {bodies} separate bodies",
             )
         )
-    return issues
+    return issues, volume, bodies
+
+
+def check_part(part, geometry: bool = True, resolution: int = 32) -> list[ModelIssue]:
+    """Every check, in the order that makes the first failure the useful one."""
+    if not geometry:
+        issues = check_equations(part)
+        if issues:
+            return issues
+        return check_features(part, part.resolved_parameters())
+    return inspect_part(part, resolution)[0]
 
 
 def is_buildable(part, resolution: int = 32) -> bool:

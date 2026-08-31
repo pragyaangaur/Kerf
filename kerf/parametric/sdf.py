@@ -18,7 +18,12 @@ from .features import Feature
 
 
 def feature_bounds(feature: Feature, params: dict[str, float]) -> tuple[np.ndarray, np.ndarray]:
-    """A box that contains the feature, used to size the sampling lattice."""
+    """A box that contains the feature, used to size the sampling lattice.
+
+    A rotated feature needs the box around the rotated shape, not around the
+    shape it started as. Getting that wrong makes the lattice too small, and
+    the part is then quietly cut off at the edge of its own sampling volume.
+    """
     centre = resolve_vec(feature.params.get("center"), params)
     if feature.type == "box":
         half = resolve_vec(feature.params.get("size"), params, (1, 1, 1)) / 2.0
@@ -35,7 +40,31 @@ def feature_bounds(feature: Feature, params: dict[str, float]) -> tuple[np.ndarr
         ring = resolve(feature.params.get("radius", 1), params)
         tube = resolve(feature.params.get("tube", 0.25), params)
         half = np.array([ring + tube, ring + tube, tube], dtype=float)
+
+    rotation = feature.params.get("rotate")
+    if rotation is not None:
+        half = _rotated_half_extent(half, resolve_vec(rotation, params))
     return centre - half, centre + half
+
+
+def _rotated_half_extent(half: np.ndarray, degrees: np.ndarray) -> np.ndarray:
+    """Half extent of the box that contains a rotated box.
+
+    Every corner is carried through the same rotation the field uses, and the
+    box around those eight points is the answer. This is exact for a box and
+    a safe over-estimate for the round shapes, which is the right way round
+    for something that only sizes a lattice.
+    """
+    signs = np.array(
+        [[x, y, z] for x in (-1, 1) for y in (-1, 1) for z in (-1, 1)], dtype=float
+    )
+    # rotate_points carries a world point into the feature's frame, so the
+    # matrix that carries the shape back out is its transpose. Reading that
+    # matrix off the basis vectors keeps this in step with the field itself,
+    # whatever convention the field settles on.
+    to_local = rotate_points(np.eye(3), degrees).T
+    corners = (signs * half) @ to_local
+    return np.abs(corners).max(axis=0)
 
 
 def feature_sdf(feature: Feature, points: np.ndarray, params: dict[str, float]) -> np.ndarray:
