@@ -43,6 +43,8 @@ These are available inside an expression.
 
 Anything else raises `ExpressionError`. That includes attribute access, comprehensions, imports, and any name the parameter table does not define.
 
+Arithmetic that cannot produce a number raises the same error rather than a builtin one. Dividing by zero, the square root of a negative number, and a result that overflows a float are all things a parameter table can ask for, and each is a rebuild error that names the equation. An exponent above 1024 is refused instead of computed, because `2**(2**30)` is ordinary arithmetic that would take minutes.
+
 Parameters may refer to other parameters. A definition that never resolves is either circular or points at a name that does not exist, and kerf reports it rather than looping.
 
 Expression dependencies also drive impact analysis. When `bolt_d` changes, kerf reads every expression in the part and names the features that mention it.
@@ -86,13 +88,17 @@ Each type has its own fields.
 | `sphere` | `radius` |
 | `torus` | `radius` for the ring, and `tube` |
 
+An `axis` outside `x`, `y`, and `z` is refused when the file is read rather than when the field is sampled. A torus always lies in the XY plane, and `rotate` is how you turn it out of that plane.
+
 ## Evaluation
 
 Features fold in order into a signed distance field. An `add` is a union, a `subtract` is a difference, and an `intersect` keeps what is inside both. A non zero `blend` makes that boolean smooth, which is how a fillet is expressed. The fillet is real rather than cosmetic, because it changes the measured volume.
 
 The field is sampled on a lattice and turned into triangles with naive surface nets. One vertex goes in every cell where the field changes sign, placed at the mean of the crossings on that cell's edges, and quads are stitched between the four cells that share a crossing edge.
 
-The result is watertight, wound consistently, and facing outward. The test suite checks all three, because a mesh with mixed winding is a mesh nobody can slice.
+The result is watertight, wound consistently, and facing outward. The test suite checks all three, because a mesh with mixed winding is a mesh nobody can slice. Watertight includes the faces at the very edge of the lattice, which is the boundary case worth stating: the surface can cross between the first two sample layers, and a stitcher that starts one layer in leaves a hole there that is invisible from most angles.
+
+The lattice is sized from a box around every feature that adds material. A rotated feature contributes the box around where it ended up rather than around where it started, since otherwise the part is quietly cut off at the edge of its own sampling volume.
 
 Resolution is a repository setting.
 
