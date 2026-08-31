@@ -13,6 +13,7 @@ from typing import Any
 
 FEATURE_TYPES = {"box", "cylinder", "sphere", "torus"}
 OPS = {"add", "subtract", "intersect"}
+AXES = {"x", "y", "z"}
 
 # Fields that hold a fixed choice rather than a number. A value like "y" in
 # one of these is an axis name, and reading it as an expression would report
@@ -39,6 +40,11 @@ class Feature:
             raise ValueError(f"feature {feature_id}: unknown type {raw.get('type')!r}")
         if raw.get("op", "add") not in OPS:
             raise ValueError(f"feature {feature_id}: unknown op {raw.get('op')!r}")
+        axis = raw.get("axis")
+        if axis is not None and str(axis).lower() not in AXES:
+            # Caught here rather than at evaluation time, so a bad axis reads
+            # as a malformed part file instead of as a crash inside the field.
+            raise ValueError(f"feature {feature_id}: axis must be x, y, or z, not {axis!r}")
         return Feature(
             id=str(feature_id),
             type=raw["type"],

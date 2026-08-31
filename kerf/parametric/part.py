@@ -33,13 +33,26 @@ class Part:
     @staticmethod
     def loads(data: bytes | str) -> "Part":
         raw = json.loads(data.decode() if isinstance(data, bytes) else data)
+        if not isinstance(raw, dict):
+            raise ValueError("a kerf part file has to be a JSON object")
         if "kerf_part" not in raw:
             raise ValueError("not a kerf part file (missing 'kerf_part')")
+        parameters = raw.get("parameters", {})
+        if not isinstance(parameters, dict):
+            raise ValueError("'parameters' has to be an object of name to value")
+        for name in parameters:
+            if not str(name).isidentifier():
+                raise ValueError(
+                    f"parameter name {name!r} is not a name an equation could read"
+                )
+        features = raw.get("features", [])
+        if not isinstance(features, list):
+            raise ValueError("'features' has to be a list")
         part = Part(
             name=raw.get("name", "part"),
             units=raw.get("units", "mm"),
-            parameters=dict(raw.get("parameters", {})),
-            features=[Feature.from_dict(item) for item in raw.get("features", [])],
+            parameters=dict(parameters),
+            features=[Feature.from_dict(item) for item in features],
             meta=dict(raw.get("meta", {})),
         )
         seen: set[str] = set()

@@ -23,12 +23,32 @@ ALLOWED_FUNCTIONS = {
 
 ALLOWED_CONSTANTS = {"pi": math.pi, "tau": math.tau, "e": math.e}
 
+# An exponent large enough to make Python build a number with millions of
+# digits, which is a way to hang a rebuild with nothing but a part file.
+MAX_EXPONENT = 1024.0
+
+
+class ExpressionError(ValueError):
+    """Raised when an expression is malformed or uses something not allowed."""
+
+
+def _power(base: float, exponent: float) -> float:
+    """Raise to a power, refusing exponents that would take a visible time.
+
+    A part file arrives from somebody else, and `2**(2**30)` is a plain
+    arithmetic expression that Python will happily spend minutes on.
+    """
+    if abs(exponent) > MAX_EXPONENT:
+        raise ExpressionError(f"exponent {exponent:g} is out of range")
+    return base ** exponent
+
+
 BINARY_OPERATORS = {
     ast.Add: lambda a, b: a + b,
     ast.Sub: lambda a, b: a - b,
     ast.Mult: lambda a, b: a * b,
     ast.Div: lambda a, b: a / b,
-    ast.Pow: lambda a, b: a ** b,
+    ast.Pow: _power,
     ast.Mod: lambda a, b: a % b,
     ast.FloorDiv: lambda a, b: a // b,
 }
@@ -36,6 +56,7 @@ BINARY_OPERATORS = {
 
 class ExpressionError(ValueError):
     """Raised when an expression is malformed or uses something not allowed."""
+
 
 
 def evaluate_expression(expression: str, params: dict[str, float]) -> float:
@@ -59,7 +80,10 @@ def evaluate_expression(expression: str, params: dict[str, float]) -> float:
                 return ALLOWED_CONSTANTS[node.id]
             raise ExpressionError(f"unknown parameter {node.id!r}")
         if isinstance(node, ast.BinOp) and type(node.op) in BINARY_OPERATORS:
-            return BINARY_OPERATORS[type(node.op)](walk(node.left), walk(node.right))
+            left, right = walk(node.left), walk(node.right)
+            return _arithmetic(
+                BINARY_OPERATORS[type(node.op)], left, right, expression=expression
+            )
         if isinstance(node, ast.UnaryOp):
             if isinstance(node.op, ast.USub):
                 return -walk(node.operand)
@@ -69,10 +93,32 @@ def evaluate_expression(expression: str, params: dict[str, float]) -> float:
             function = ALLOWED_FUNCTIONS.get(node.func.id)
             if function is None:
                 raise ExpressionError(f"function {node.func.id!r} is not allowed")
-            return float(function(*[walk(argument) for argument in node.args]))
+            arguments = [walk(argument) for argument in node.args]
+            return _arithmetic(function, *arguments, expression=expression)
         raise ExpressionError(f"unsupported syntax in expression {expression!r}")
 
-    return walk(tree)
+    value = walk(tree)
+    if not math.isfinite(value):
+        raise ExpressionError(f"expression {expression!r} does not resolve to a finite number")
+    return value
+
+
+def _arithmetic(operation, *arguments, expression: str) -> float:
+    """Apply one operation, turning every arithmetic failure into our own error.
+
+    Division by zero, the square root of a negative number, and an overflow
+    are all things a parameter table can ask for. Each raises its own builtin
+    exception, and letting those escape means a rebuild error arrives as a
+    traceback instead of as a message naming the equation.
+    """
+    try:
+        return float(operation(*arguments))
+    except ExpressionError:
+        raise
+    except ZeroDivisionError as error:
+        raise ExpressionError(f"{expression!r} divides by zero") from error
+    except (ArithmeticError, ValueError, TypeError) as error:
+        raise ExpressionError(f"cannot evaluate {expression!r}: {error}") from error
 
 
 def resolve(value: Any, params: dict[str, float]) -> float:
