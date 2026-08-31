@@ -15,6 +15,10 @@ from .. import model as model_mod
 from ..objects import TreeEntry, hash_object
 from .errors import RepoError
 
+# Models parsed from blobs, kept only for as long as one command runs. Each
+# one holds a mesh, so this is deliberately small.
+MODEL_CACHE_SIZE = 24
+
 
 class IndexMixin:
     """Staging and the derived geometry cache."""
@@ -29,6 +33,7 @@ class IndexMixin:
         return self._cache
 
     def _save_cache(self) -> None:
+        """Write the whole cache. Callers should prefer flush_cache."""
         if self._cache is None:
             return
         os.makedirs(os.path.dirname(self.cache_path), exist_ok=True)
@@ -52,11 +57,33 @@ class IndexMixin:
             "size": len(data),
         }
         cache[oid] = info
-        self._save_cache()
+        self._cache_dirty = True
         return info
 
+    def flush_cache(self) -> None:
+        """Write the geometry cache out, if anything was added to it."""
+        if self._cache_dirty:
+            self._save_cache()
+            self._cache_dirty = False
+
     def load_model(self, path: str, data: bytes) -> model_mod.Model:
-        return model_mod.load(path, data, self.config.get("eval_resolution", 56))
+        """Parse a blob into a model, remembering the last few.
+
+        Walking history compares each revision against the one before it, so
+        the same blob is the new side of one comparison and the old side of
+        the next. Evaluating a feature tree is the expensive part of that,
+        and doing it twice is pure waste. The cache is small and bounded,
+        because a model holds a mesh.
+        """
+        key = (path, hash_object("blob", data))
+        found = self._models.get(key)
+        if found is not None:
+            return found
+        model = model_mod.load(path, data, self.config.get("eval_resolution", 56))
+        if len(self._models) >= MODEL_CACHE_SIZE:
+            self._models.pop(next(iter(self._models)))
+        self._models[key] = model
+        return model
 
     def model_at(self, rev: str, path: str) -> model_mod.Model:
         tree = self.commit_tree(rev)
@@ -117,6 +144,7 @@ class IndexMixin:
                 index[relative] = entry
                 staged.append(entry)
         self.write_index(index)
+        self.flush_cache()
         return staged
 
     def unstage(self, paths: Iterable[str]) -> None:

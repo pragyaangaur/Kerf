@@ -52,6 +52,10 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
         self.cache_path = os.path.join(self.kerf, "cache", "geometry.json")
         self._cache: Optional[dict] = None
         self._generation: dict[str, int] = {}
+        self._config: Optional[dict] = None
+        self._ignores: Optional[list[str]] = None
+        self._cache_dirty = False
+        self._models: dict[tuple[str, str], object] = {}
 
     @staticmethod
     def init(root: str, author: str | None = None) -> "Repo":
@@ -82,14 +86,23 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
 
     @property
     def config(self) -> dict:
-        with open(os.path.join(self.kerf, "config.json")) as handle:
-            return json.load(handle)
+        """The repository settings, read once per Repo object.
+
+        Every file staged, and every file status looks at, asks for the
+        evaluation resolution. Reading the file each time turned one setting
+        into one open() per part.
+        """
+        if self._config is None:
+            with open(os.path.join(self.kerf, "config.json")) as handle:
+                self._config = json.load(handle)
+        return self._config
 
     def set_config(self, key: str, value) -> None:
-        config = self.config
+        config = dict(self.config)
         config[key] = value
         with open(os.path.join(self.kerf, "config.json"), "w") as handle:
             json.dump(config, handle, indent=2)
+        self._config = config
 
     @property
     def author(self) -> str:
@@ -177,15 +190,23 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
         )
 
     def ignores(self) -> list[str]:
-        patterns = list(DEFAULT_IGNORES)
-        path = os.path.join(self.root, ".kerfignore")
-        if os.path.exists(path):
-            with open(path) as handle:
-                for line in handle:
-                    line = line.strip()
-                    if line and not line.startswith("#"):
-                        patterns.append(line)
-        return patterns
+        """The ignore patterns, read once per Repo object.
+
+        is_ignored is asked about every file in the working tree, so reading
+        .kerfignore inside it meant re-reading the file thousands of times
+        for one status.
+        """
+        if self._ignores is None:
+            patterns = list(DEFAULT_IGNORES)
+            path = os.path.join(self.root, ".kerfignore")
+            if os.path.exists(path):
+                with open(path) as handle:
+                    for line in handle:
+                        line = line.strip()
+                        if line and not line.startswith("#"):
+                            patterns.append(line)
+            self._ignores = patterns
+        return self._ignores
 
     def is_ignored(self, relative: str) -> bool:
         for pattern in self.ignores():
@@ -352,6 +373,7 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
         for path in sorted(index):
             if os.path.exists(os.path.join(self.root, path)):
                 tree.entries[path] = self.stage_entry(path)
+        self.flush_cache()
         return tree
 
     def export(self, rev: str, dest: str) -> int:

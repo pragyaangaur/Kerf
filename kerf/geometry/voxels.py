@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import numpy as np
 
+from .connectivity import connected_labels
 from .mesh import Mesh
 
 
@@ -132,27 +133,19 @@ def interior_seeds(grid: np.ndarray) -> np.ndarray:
 
 
 def label_regions(grid: np.ndarray) -> tuple[np.ndarray, int]:
-    """Group occupied cells into connected regions, joined across faces."""
+    """Group occupied cells into connected regions, joined across faces.
+
+    Region numbers start at one, so zero means the cell is empty.
+    """
     occupied = np.argwhere(grid)
     labels = np.zeros(grid.shape, dtype=np.int32)
     if len(occupied) == 0:
         return labels, 0
 
-    lookup = -np.ones(grid.shape, dtype=np.int32)
+    lookup = -np.ones(grid.shape, dtype=np.int64)
     lookup[tuple(occupied.T)] = np.arange(len(occupied))
-    parent = np.arange(len(occupied))
 
-    def find(node: int) -> int:
-        while parent[node] != node:
-            parent[node] = parent[parent[node]]
-            node = parent[node]
-        return node
-
-    def union(left: int, right: int) -> None:
-        left_root, right_root = find(left), find(right)
-        if left_root != right_root:
-            parent[max(left_root, right_root)] = min(left_root, right_root)
-
+    pairs: list[np.ndarray] = []
     for axis in range(3):
         lower = [slice(None)] * 3
         upper = [slice(None)] * 3
@@ -161,15 +154,14 @@ def label_regions(grid: np.ndarray) -> tuple[np.ndarray, int]:
         both = grid[tuple(lower)] & grid[tuple(upper)]
         if not both.any():
             continue
-        pairs = np.argwhere(both)
-        left = lookup[tuple(pairs.T)]
-        shifted = pairs.copy()
+        found = np.argwhere(both)
+        shifted = found.copy()
         shifted[:, axis] += 1
-        right = lookup[tuple(shifted.T)]
-        for a, b in zip(left, right):
-            union(int(a), int(b))
+        pairs.append(
+            np.stack([lookup[tuple(found.T)], lookup[tuple(shifted.T)]], axis=1)
+        )
 
-    roots = np.array([find(i) for i in range(len(occupied))])
-    unique, compact = np.unique(roots, return_inverse=True)
+    edges = np.concatenate(pairs) if pairs else np.zeros((0, 2), dtype=np.int64)
+    compact, count = connected_labels(len(occupied), edges)
     labels[tuple(occupied.T)] = compact + 1
-    return labels, len(unique)
+    return labels, count

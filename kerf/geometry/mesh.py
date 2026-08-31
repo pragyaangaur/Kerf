@@ -6,6 +6,8 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .connectivity import connected_labels
+
 
 @dataclass
 class Mesh:
@@ -120,25 +122,17 @@ class Mesh:
         return float((np.einsum("ij,ij->i", normals, offsets) > 0).mean())
 
     def component_count(self) -> int:
-        """Number of separate bodies, found by union of shared vertices."""
+        """Number of separate bodies, found by union of shared vertices.
+
+        Only vertices a face actually uses are counted, so a stray vertex no
+        triangle refers to does not read as a body of its own.
+        """
         if self.empty():
             return 0
-        parent = np.arange(len(self.vertices))
-
-        def find(node: int) -> int:
-            while parent[node] != node:
-                parent[node] = parent[parent[node]]
-                node = parent[node]
-            return node
-
-        for face in self.faces:
-            root = find(int(face[0]))
-            for other in face[1:]:
-                other_root = find(int(other))
-                if root != other_root:
-                    parent[other_root] = root
-        used = np.unique(self.faces)
-        return len({find(int(vertex)) for vertex in used})
+        faces = self.faces.astype(np.int64)
+        edges = np.concatenate([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]])
+        labels, _ = connected_labels(len(self.vertices), edges)
+        return int(len(np.unique(labels[np.unique(faces)])))
 
     def stats(self) -> dict:
         low, high = self.bbox()

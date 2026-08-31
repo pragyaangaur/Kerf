@@ -107,4 +107,5 @@ class StatusMixin:
                 working.append(StatusEntry(path, *same_shape_state(path)))
             else:
                 working.append(StatusEntry(path, "modified"))
+        self.flush_cache()
         return staged, working

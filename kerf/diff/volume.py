@@ -81,9 +81,20 @@ def diff_volumes(
             continue
         seeds = interior_seeds(grid)
         labels, count = label_regions(grid)
-        seeded = set(np.unique(labels[seeds])) - {0}
+        seeded = set(np.unique(labels[seeds]).tolist()) - {0}
+
+        # The cells are sorted by region once, rather than scanning the whole
+        # lattice again for every region. Re-tessellation can leave hundreds
+        # of one cell regions behind, and that scan was the cost of the diff.
+        occupied = np.argwhere(labels)
+        order = np.argsort(labels[tuple(occupied.T)], kind="stable")
+        occupied = occupied[order]
+        starts = np.searchsorted(labels[tuple(occupied.T)], np.arange(1, count + 2))
+
         for label in range(1, count + 1):
-            cells = np.argwhere(labels == label)
+            cells = occupied[starts[label - 1]:starts[label]]
+            if not len(cells):
+                continue
             volume = len(cells) * cell
             if label not in seeded:
                 # Nowhere thicker than one lattice cell. This is what
