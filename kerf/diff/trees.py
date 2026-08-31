@@ -28,11 +28,14 @@ def diff_trees(
     old_entries = dict(tree_old.entries)
     new_entries = dict(tree_new.entries)
 
+    # Both are walked in sorted order. Two files can be deleted with the same
+    # geometry, and which one a new file is reported as a rename of has to be
+    # the same answer on every run.
     dropped = set(old_entries) - set(new_entries)
     appeared = set(new_entries) - set(old_entries)
     renames: dict[str, str] = {}
     by_geometry: dict[str, list[str]] = {}
-    for path in dropped:
+    for path in sorted(dropped):
         gid = old_entries[path].gid
         if gid:
             by_geometry.setdefault(gid, []).append(path)

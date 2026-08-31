@@ -8,6 +8,7 @@ the field.
 
 from __future__ import annotations
 
+import copy
 from typing import Optional
 
 from ..parametric import Feature, Part
@@ -70,7 +71,7 @@ def merge_parts(
         original = base_features.get(feature_id)
         our_feature = our_features.get(feature_id)
         if our_feature is None and original is None:
-            merged.features.append(their_feature)
+            merged.features.append(copy.deepcopy(their_feature))
             theirs_added.append(feature_id)
             notes.append(f"feature {their_feature.label()} added from theirs")
             continue
@@ -117,10 +118,22 @@ def merge_parts(
     base_order = [fid for fid in (item.id for item in base.features) if fid in common]
     if our_order != their_order:
         if our_order == base_order:
-            index = {fid: i for i, fid in enumerate(their_order)}
-            merged.features.sort(
-                key=lambda item: (index.get(item.id, len(index) + merged.features.index(item)),)
-            )
+            # Their order decides where every feature they have goes, which
+            # includes the ones they added. Anything only we have is not in
+            # that order at all, so it keeps the place it holds now, just
+            # after whatever it currently follows. The key is worked out
+            # before the sort, because list.sort empties the list while it
+            # is running the key function over it.
+            wanted = {item.id: i for i, item in enumerate(theirs.features)}
+            rank: dict[str, tuple[int, int]] = {}
+            anchor = -1
+            for offset, item in enumerate(merged.features):
+                if item.id in wanted:
+                    anchor = wanted[item.id]
+                    rank[item.id] = (anchor, 0)
+                else:
+                    rank[item.id] = (anchor, offset + 1)
+            merged.features.sort(key=lambda item: rank[item.id])
             notes.append("feature order taken from theirs")
         elif their_order != base_order:
             conflicts.append(
