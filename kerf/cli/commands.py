@@ -21,6 +21,16 @@ from .style import USE_COLOR
 NUMERIC_CONFIG = {"eval_resolution", "diff_resolution"}
 
 
+def status_word(style, word: str, width: int = 9) -> str:
+    """A status word, padded and then coloured, in that order.
+
+    Escape codes are characters as far as a format specifier is concerned, so
+    padding a string that has already been coloured pads it to the wrong width
+    and the column stops lining up.
+    """
+    return style(f"{word:>{width}}")
+
+
 def open_repo(args) -> Repo:
     """Find the repository the command should act on."""
     return Repo(find_repo(getattr(args, "repo", None) or "."))
@@ -662,8 +672,8 @@ def cmd_check(args) -> None:
         except Exception as error:                   # noqa: BLE001
             # A part that will not even load is the loudest failure there is,
             # and `kerf check` is exactly where it should be reported.
-            print(f"  {red(f'{"broken":>9}')}  {path}")
-            print(f"                      {red(f'cannot be read: {error}')}")
+            print(f"  {status_word(red, 'broken')}  {path}")
+            print(f"                      {red('cannot be read: ' + str(error))}")
             failed = True
             continue
 
@@ -672,7 +682,7 @@ def cmd_check(args) -> None:
         style, word = (
             (red, "broken") if errors else ((yellow, "warning") if issues else (green, "builds"))
         )
-        print(f"  {style(f'{word:>9}')}  {path}")
+        print(f"  {status_word(style, word)}  {path}")
         for issue in issues:
             style = red if issue.severity == "error" else yellow
             print(f"                      {style(issue.describe())}")
