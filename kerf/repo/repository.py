@@ -51,6 +51,7 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
         self.store = ObjectStore(os.path.join(self.kerf, "objects"))
         self.cache_path = os.path.join(self.kerf, "cache", "geometry.json")
         self._cache: Optional[dict] = None
+        self._generation: dict[str, int] = {}
 
     @staticmethod
     def init(root: str, author: str | None = None) -> "Repo":
@@ -116,26 +117,7 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
             found.append((oid, commit))
             frontier.extend(commit.parents)
 
-        generation: dict[str, int] = {}
-
-        def measure(oid: str) -> int:
-            stack = [oid]
-            while stack:
-                current = stack[-1]
-                if current in generation:
-                    stack.pop()
-                    continue
-                parents = self.commit_obj(current).parents
-                missing = [p for p in parents if p not in generation]
-                if missing:
-                    stack.extend(missing)
-                    continue
-                generation[current] = 1 + max((generation[p] for p in parents), default=0)
-                stack.pop()
-            return generation[oid]
-
-        for oid, _ in found:
-            measure(oid)
+        generation = {oid: self.generation(oid) for oid, _ in found}
         found.sort(key=lambda pair: (-pair[1].timestamp, -generation[pair[0]], pair[0]))
         return found[:limit] if limit else found
 
@@ -150,17 +132,49 @@ class Repo(RefMixin, IndexMixin, StatusMixin, LockMixin):
             stack.extend(self.commit_obj(current).parents)
         return seen
 
+    def generation(self, oid: str) -> int:
+        """How many commits deep this one sits, counting from the root.
+
+        This is the ordering a merge base needs. A parent always has a
+        smaller generation than its child, which is a fact about the graph
+        rather than about the clock on whichever machine wrote the commit.
+        """
+        depth = self._generation
+        stack = [oid]
+        while stack:
+            current = stack[-1]
+            if current in depth:
+                stack.pop()
+                continue
+            parents = self.commit_obj(current).parents
+            missing = [p for p in parents if p not in depth]
+            if missing:
+                stack.extend(missing)
+                continue
+            depth[current] = 1 + max((depth[p] for p in parents), default=0)
+            stack.pop()
+        return depth[oid]
+
     def merge_base(self, a: str, b: str) -> Optional[str]:
-        """The most recent commit both revisions descend from."""
-        from_a = self.ancestors(a)
-        best: Optional[str] = None
-        best_time = -1
-        for oid in self.ancestors(b):
-            if oid in from_a:
-                timestamp = self.commit_obj(oid).timestamp
-                if timestamp > best_time:
-                    best, best_time = oid, timestamp
-        return best
+        """The most recent commit both revisions descend from.
+
+        Ranking the shared ancestors by timestamp looks right and is not.
+        Timestamps have one second of resolution, so a quick run of commits
+        shares one, and the answer then came down to which order a set
+        happened to iterate in. Picking the wrong base makes the three way
+        merge see changes on a side that never made them.
+
+        Generation is the ordering the graph itself provides. Ties are broken
+        by timestamp and then by object id, so the answer is the same on
+        every machine and on every run.
+        """
+        shared = self.ancestors(a) & self.ancestors(b)
+        if not shared:
+            return None
+        return max(
+            sorted(shared),
+            key=lambda oid: (self.generation(oid), self.commit_obj(oid).timestamp),
+        )
 
     def ignores(self) -> list[str]:
         patterns = list(DEFAULT_IGNORES)
