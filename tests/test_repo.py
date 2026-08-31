@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from unittest import mock
 
 import numpy as np
 
@@ -242,11 +243,18 @@ class TestMergeBase(unittest.TestCase):
         self.tmp.cleanup()
 
     def revise(self, thickness: int, message: str) -> str:
+        """Record one revision. The clock is held still.
+
+        Every commit a fast script writes already lands in the same second,
+        which is the case this is about. Freezing it outright means the test
+        cannot pass by happening to straddle a second boundary.
+        """
         body = part([{"id": "b", "type": "box", "size": [20, 20, "t"]}], {"t": thickness})
         with open(os.path.join(self.root, "p.kpart"), "wb") as handle:
             handle.write(body.dumps())
         self.repo.add(["p.kpart"])
-        return self.repo.commit(message)
+        with mock.patch("kerf.repo.repository.time.time", return_value=1_700_000_000):
+            return self.repo.commit(message)
 
     def test_the_nearest_shared_ancestor_wins_when_timestamps_tie(self):
         first = self.revise(1, "one")
@@ -257,7 +265,7 @@ class TestMergeBase(unittest.TestCase):
 
         stamps = {self.repo.commit_obj(oid).timestamp
                   for oid in (first, second, third, fourth)}
-        self.assertEqual(len(stamps), 1, "this test is only meaningful on tied timestamps")
+        self.assertEqual(stamps, {1_700_000_000})
         self.assertEqual(self.repo.merge_base(fourth, third), third)
         self.assertEqual(self.repo.merge_base(third, fourth), third)
 
