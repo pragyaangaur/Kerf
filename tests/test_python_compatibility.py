@@ -14,6 +14,12 @@ backslash. Both are a syntax error on 3.10 and 3.11.
 ast.parse(feature_version=(3, 10)) does not help here. That flag gates a few
 grammar features and does not put the old f-string tokeniser back, so a file
 using PEP 701 parses cleanly under it and then fails on the real interpreter.
+
+The scan itself only runs on 3.12 and later, because reading the inside of an
+f-string needs the tokeniser that shipped with PEP 701. That is not a gap.
+Older interpreters refuse the file outright, so on the versions where this
+matters most the interpreter is the check, and this exists to catch the
+mistake on the machine somebody is actually writing the code on.
 """
 
 from __future__ import annotations
@@ -22,6 +28,7 @@ import io
 import os
 import pathlib
 import re
+import sys
 import token
 import tokenize
 import unittest
@@ -31,6 +38,10 @@ TRIPLES = ('"""', "'''")
 
 # The oldest version pyproject promises to run on. PEP 701 landed in 3.12.
 OLDEST = (3, 10)
+
+# Before 3.12 the tokeniser hands back a whole f-string as one STRING token,
+# so there is nothing to look inside.
+HAS_FSTRING_TOKENS = sys.version_info >= (3, 12)
 
 
 def sources() -> list[pathlib.Path]:
@@ -87,6 +98,11 @@ def pep701_uses(path: pathlib.Path) -> list[tuple[int, str]]:
     return found
 
 
+@unittest.skipUnless(
+    HAS_FSTRING_TOKENS,
+    "this scan needs the 3.12 tokeniser; on older versions the interpreter "
+    "refuses the file itself, which is a better check than this one",
+)
 class TestOlderPythonCanParseEverything(unittest.TestCase):
     def test_no_module_needs_a_newer_f_string_than_we_support(self):
         offences = []
@@ -108,6 +124,8 @@ class TestOlderPythonCanParseEverything(unittest.TestCase):
         finally:
             os.remove(sample)
 
+
+class TestSupportedVersions(unittest.TestCase):
     def test_the_promised_version_matches_what_ci_runs(self):
         pyproject = (ROOT / "pyproject.toml").read_text()
         declared = re.search(r'requires-python\s*=\s*">=(\d+)\.(\d+)"', pyproject)

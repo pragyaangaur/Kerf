@@ -1,0 +1,15 @@
+Collected 0 items to run in parallel
+F                                                                        [100%]
+=================================== FAILURES ===================================
+__________________________ T.test_deliberately_fails ___________________________
+
+self = <failing_test.T testMethod=test_deliberately_fails>
+
+    def test_deliberately_fails(self):
+>       self.assertEqual(1, 2, "proving the summary step captures this")
+E       AssertionError: 1 != 2 : proving the summary step captures this
+
+/tmp/failing_test.py:4: AssertionError
+=========================== short test summary info ============================
+FAILED ../../../../tmp/failing_test.py::T::test_deliberately_fails - Assertio...
+1 failed in 0.02s

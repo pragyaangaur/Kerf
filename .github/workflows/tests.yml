@@ -9,6 +9,10 @@ jobs:
   pytest:
     runs-on: ubuntu-latest
     strategy:
+      # Without this, the first version to fail cancels the other one, and the
+      # most useful thing to know about a failure is whether it happens on
+      # both versions or only on one.
+      fail-fast: false
       matrix:
         python: ["3.10", "3.12"]
     steps:
@@ -32,7 +36,26 @@ jobs:
         # tests, because a module nothing imports is never parsed.
         run: python -m compileall -q kerf tests
       - name: Run the test suite
-        run: python -m pytest tests -q
+        run: |
+          set +e
+          python -m pytest tests -q -ra > pytest.log 2>&1
+          status=$?
+          cat pytest.log
+          exit $status
+      - name: Say what failed
+        # Reading the raw log needs admin rights on the repository, so a
+        # failure is otherwise just "exit code 1" to anybody who forked this.
+        # The run summary is public, so the end of the log goes there, which
+        # is where pytest puts the tracebacks and the summary.
+        if: failure()
+        run: |
+          {
+            echo "### pytest failed on Python ${{ matrix.python }}"
+            echo ''
+            echo '```'
+            tail -n 150 pytest.log
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
       - name: Confirm the two engines were actually compared
         run: python -m pytest tests/test_engine_parity.py -q --no-header -rN
       - name: Build the worked example
