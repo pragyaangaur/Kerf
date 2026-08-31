@@ -27,8 +27,16 @@ class Conflict:
     detail: str = ""
 
     def describe(self) -> str:
-        if self.scope in ("interference", "file"):
-            return f"{self.key}: {self.detail}"
+        """One line naming the conflict.
+
+        A conflict that carries a detail has already said what is wrong in
+        words, and that sentence is the useful part. Listing which side held
+        which value only helps when the conflict is two edits to one field.
+        """
+        if self.detail:
+            return f"{self.scope} {self.key}: {self.detail}" if self.scope not in (
+                "interference", "file"
+            ) else f"{self.key}: {self.detail}"
         return (
             f"{self.scope} {self.key}: ours={short(self.ours)} "
             f"theirs={short(self.theirs)} (base={short(self.base)})"

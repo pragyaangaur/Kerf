@@ -3,8 +3,9 @@
 The story is a small NEMA-17 motor bracket going through a week of revisions.
 It was chosen because it exercises every part of kerf. There is a parameter
 edit that changes the solid, a re-export that changes nothing, two people
-working in parallel on separate features, and a merge that succeeds on the
-feature tree while the geometry collides.
+working in parallel on separate features, a merge that succeeds on the
+feature tree while the geometry collides, and a merge that leaves an
+equation pointing at a name that no longer exists.
 """
 
 from __future__ import annotations
@@ -222,14 +223,58 @@ def build_demo(root: str, quiet: bool = False) -> Repo:
     b3 = repo.commit("cable tie slot on the right hand side", author="rui")
     say(f"  cable-tie   {b3[:10]}  adds a slot right where the chassis mount lives")
 
+    # -- a branch that adds a hole reading a name another branch renames ---
+    repo.checkout("main")
+    repo.create_branch("fifth-bolt")
+    repo.checkout("fifth-bolt")
+    v6 = json.loads(json.dumps(v2))
+    v6["features"].append({
+        "id": "bolt_e", "type": "cylinder", "op": "subtract", "name": "motor bolt E",
+        "radius": "bolt_d/2", "height": 40, "axis": "y",
+        "center": ["bolt_pitch/2", "plate_d/2 - wall_t/2", "rise - 6"],
+    })
+    _write(root, "parts/bracket.kpart", _part_bytes(v6))
+    repo.add(["parts/bracket.kpart"])
+    b4 = repo.commit("add a fifth bolt hole on the motor centreline", author="dana")
+    say(f"  fifth-bolt  {b4[:10]}  a hole positioned at bolt_pitch/2")
+
+    # -- and the branch that renames it ------------------------------------
+    #
+    # Nobody did anything wrong here. Both branches build. The merge is what
+    # creates the failure, which is the whole point of the equation gate.
+    repo.checkout("main")
+    repo.create_branch("tidy-names")
+    repo.checkout("tidy-names")
+    v7 = json.loads(json.dumps(v2))
+    v7["parameters"]["hole_pitch"] = v7["parameters"].pop("bolt_pitch")
+    v7["features"] = [
+        {
+            key: (value.replace("bolt_pitch", "hole_pitch") if isinstance(value, str) else value)
+            if key != "center" else
+            [item.replace("bolt_pitch", "hole_pitch") if isinstance(item, str) else item
+             for item in value]
+            for key, value in feature.items()
+        }
+        for feature in v7["features"]
+    ]
+    _write(root, "parts/bracket.kpart", _part_bytes(v7))
+    repo.add(["parts/bracket.kpart"])
+    b5 = repo.commit("rename bolt_pitch to hole_pitch for consistency", author="rui")
+    say(f"  tidy-names  {b5[:10]}  bolt_pitch renamed to hole_pitch")
+
     repo.checkout("main")
     say()
-    say("branches: main, bore-fit, mount-slots, cable-tie")
-    say("try:")
+    say("branches: main, bore-fit, mount-slots, cable-tie, fifth-bolt, tidy-names")
+    say()
+    say("The merges build on each other, so run them in this order:")
+    say("  kerf merge bore-fit          # one parameter ahead, so a fast-forward")
+    say("  kerf merge mount-slots       # parallel feature edits, merged per feature")
+    say("  kerf merge cable-tie         # collides in space with the slots just merged")
+    say("  kerf merge fifth-bolt        # a hole positioned at bolt_pitch/2")
+    say("  kerf merge tidy-names        # renames bolt_pitch, so the merged part cannot build")
+    say()
+    say("also worth a look:")
     say("  kerf log --stat")
     say("  kerf diff HEAD~1 HEAD")
-    say("  kerf merge bore-fit          # one parameter, fast-forward")
-    say("  kerf merge mount-slots       # parallel feature edits, merged per feature")
-    say("  kerf merge cable-tie         # now collides with the slots just merged")
     say("  kerf report HEAD~2 HEAD -o report.html")
     return repo

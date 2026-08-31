@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import sys
+import textwrap
 
 from .. import diff as diff_module
 from .. import merge as merge_module
@@ -370,7 +371,13 @@ def cmd_merge(args) -> None:
         for note in f.notes:
             print(f"             {dim(note)}")
         for conflict in f.conflicts:
-            print(f"             {red('conflict:')} {conflict.describe()}")
+            # These sentences are the most useful thing kerf prints, and they
+            # run long. Wrapping them under a hanging indent keeps them
+            # readable instead of letting the terminal fold them at column one.
+            lines = textwrap.wrap(conflict.describe(), width=68) or [""]
+            print(f"             {red('conflict:')} {lines[0]}")
+            for line in lines[1:]:
+                print(f"                       {line}")
 
     if result.conflicts:
         interference = [c for c in result.conflicts if c.scope == "interference"]
