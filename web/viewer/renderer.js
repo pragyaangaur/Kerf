@@ -128,8 +128,8 @@ export class Viewer {
       drag.y = event.clientY;
       if (drag.pan) {
         const scale = this.distance * 0.0018;
-        this.target[0] -= Math.cos(this.yaw) * dx * scale;
-        this.target[1] += Math.sin(this.yaw) * dx * scale;
+        this.target[0] += Math.cos(this.yaw) * dx * scale;
+        this.target[1] -= Math.sin(this.yaw) * dx * scale;
         this.target[2] += dy * scale;
       } else {
         this.yaw += dx * 0.0072;
