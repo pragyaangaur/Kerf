@@ -8,3 +8,6 @@ dist/
 kerf-report.html
 kerf-view.html
 demo-repo/
+
+# Local editor and tooling config
+.claude/
