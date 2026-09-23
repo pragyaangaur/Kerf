@@ -11,3 +11,6 @@ demo-repo/
 
 # Local editor and tooling config
 .claude/
+
+# Test output the CI job writes
+pytest.log
