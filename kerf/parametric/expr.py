@@ -54,10 +54,6 @@ BINARY_OPERATORS = {
 }
 
 
-class ExpressionError(ValueError):
-    """Raised when an expression is malformed or uses something not allowed."""
-
-
 
 def evaluate_expression(expression: str, params: dict[str, float]) -> float:
     """Evaluate one expression against a parameter table."""
