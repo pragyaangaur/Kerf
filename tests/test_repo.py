@@ -81,6 +81,9 @@ class TestRepo(unittest.TestCase):
         with self.assertRaises(RepoError):
             self.repo.checkout("side")
         self.repo.checkout("side", force=True)      # explicit override is allowed
+        self.assertEqual(self.repo.head_commit(), first)
+        with open(os.path.join(self.root, "a.kpart"), "rb") as fh:
+            self.assertEqual(fh.read(), part(CUBE).dumps())
 
     def test_feature_tree_edit_with_identical_geometry_is_flagged(self):
         self.write("a.kpart", part(CUBE).dumps())
