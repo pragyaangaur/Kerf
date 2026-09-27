@@ -497,7 +497,6 @@ def cmd_report(args) -> None:
             new_model.mesh if new_model else None, args.resolution
         )
 
-    head = repo.head_commit()
     meta = [
         ("Repository", os.path.basename(repo.root)),
         ("Branch", repo.current_branch() or "detached"),
