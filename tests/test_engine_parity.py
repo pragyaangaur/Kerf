@@ -58,7 +58,7 @@ class TestEngineParity(unittest.TestCase):
             ("round(7.6)", {}),
         ]
         answers = ask({"expressions": cases})["expressions"]
-        for (text, params), answer in zip(cases, answers):
+        for (text, params), answer in zip(cases, answers, strict=True):
             with self.subTest(expression=text):
                 self.assertNotIn("error", answer, answer.get("error"))
                 self.assertAlmostEqual(
@@ -68,7 +68,7 @@ class TestEngineParity(unittest.TestCase):
     def test_both_engines_refuse_the_same_expressions(self):
         cases = [("1/0", {}), ("0/0", {}), ("missing + 1", {})]
         answers = ask({"expressions": cases})["expressions"]
-        for (text, params), answer in zip(cases, answers):
+        for (text, params), answer in zip(cases, answers, strict=True):
             with self.subTest(expression=text):
                 self.assertIn("error", answer)
                 with self.assertRaises(ExpressionError):
@@ -77,7 +77,7 @@ class TestEngineParity(unittest.TestCase):
     def test_default_sweep_ranges_agree(self):
         values = [10.0, 1.0, 0.5, -10.0, -0.5, 0.0]
         answers = ask({"ranges": values})["ranges"]
-        for value, answer in zip(values, answers):
+        for value, answer in zip(values, answers, strict=True):
             with self.subTest(value=value):
                 low, high = default_range(value)
                 self.assertAlmostEqual(low, answer[0], places=9)
@@ -96,7 +96,7 @@ class TestEngineParity(unittest.TestCase):
             {"type": "torus", "radius": 8, "tube": 1.5, "rotate": [0, 90, 0]},
         ]
         answers = ask({"bounds": features})["bounds"]
-        for raw, answer in zip(features, answers):
+        for raw, answer in zip(features, answers, strict=True):
             with self.subTest(feature=raw["type"], rotate=raw.get("rotate")):
                 item = part([dict(raw, id="f")]).features[0]
                 low, high = feature_bounds(item, {})
@@ -115,7 +115,7 @@ class TestEngineParity(unittest.TestCase):
             {"parts": [{"text": text, "resolution": resolution} for text in texts]}
         )["parts"]
 
-        for name, text, answer in zip(names, texts, answers):
+        for name, text, answer in zip(names, texts, answers, strict=True):
             with self.subTest(part=name):
                 model = Part.loads(text)
                 self.assertEqual(model.resolved_parameters(), answer["parameters"])
