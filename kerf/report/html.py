@@ -310,7 +310,7 @@ def _volume_block(d: ModelDiff, units: str) -> str:
             f'<tr><td><span class="dot dot-{r.kind}"></span>{r.kind}</td>'
             f'<td class="mono">{human_volume(r.volume, units)}</td>'
             f'<td class="mono">{", ".join(f"{c:.1f}" for c in r.centroid)}</td>'
-            f'<td class="mono">{" × ".join(f"{hi - lo:.1f}" for lo, hi in zip(r.bbox_min, r.bbox_max))}</td>'
+            f'<td class="mono">{" × ".join(f"{hi - lo:.1f}" for lo, hi in zip(r.bbox_min, r.bbox_max, strict=True))}</td>'
             f'</tr>'
             for r in v.regions
         )

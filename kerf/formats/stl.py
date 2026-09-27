@@ -83,7 +83,7 @@ def dump_ascii(mesh: Mesh, name: str = "kerf") -> bytes:
     lengths = np.linalg.norm(normals, axis=1, keepdims=True)
     normals = np.divide(normals, np.where(lengths == 0, 1, lengths))
     lines = [f"solid {name}"]
-    for n, t in zip(normals, tris):
+    for n, t in zip(normals, tris, strict=True):
         lines.append("  facet normal %.6e %.6e %.6e" % tuple(n))
         lines.append("    outer loop")
         for v in t:

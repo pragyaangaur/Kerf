@@ -15,7 +15,6 @@ import unittest
 
 from kerf.demo import build_demo
 from kerf.parametric import Part, is_buildable
-from kerf.repo import Repo
 
 WALKTHROUGH = ["bore-fit", "mount-slots", "cable-tie", "fifth-bolt", "tidy-names"]
 

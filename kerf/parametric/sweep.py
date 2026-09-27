@@ -121,7 +121,7 @@ class SweepResult:
         volumes = [p.volume or 0.0 for p in self.points]
         top = max(volumes) or 1.0
         rows = []
-        for point, volume in zip(self.points, volumes):
+        for point, volume in zip(self.points, volumes, strict=True):
             if not point.ok:
                 rows.append(f"{point.value:>9.3g}  " + "x" * 3 + "  fails")
                 continue
