@@ -286,4 +286,4 @@ Building from GitHub Actions gives a cleaner URL, because the workflow uploads `
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE).
+Kerf is released under the [PolyForm Noncommercial License 1.0.0](LICENSE). You may read, run, fork and change it for any noncommercial purpose, which includes personal projects, study, research, teaching, and use by charities and public bodies. Commercial use needs a separate licence from the author, so open an issue or write to pragyaangaur12@gmail.com to ask. Versions published before 16 October 2026 were released under MIT, and copies of those versions keep that licence.
