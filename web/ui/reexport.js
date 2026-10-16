@@ -5,7 +5,7 @@
 // part twice, compares the bytes, and then asks kerf the same question.
 
 import { clonePart, evaluatePart, parsePart } from '../engine/part.js';
-import { equivalent, geometryHash } from '../engine/fingerprint.js';
+import { equivalent, geometryHash } from '../engine/geometry-hash.js';
 import { countDifferentBytes, reexport, writeBinaryStl } from '../engine/stl.js';
 import { bytes, clear, element } from './format.js';
 
