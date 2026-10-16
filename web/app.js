@@ -18,7 +18,8 @@ async function loadPart(entry) {
     if (!response.ok) throw new Error(`cannot load ${entry.file}`);
     partCache.set(entry.file, await response.json());
   }
-  return structuredClone(partCache.get(entry.file));
+  const part = partCache.get(entry.file);
+  return typeof structuredClone === 'function' ? structuredClone(part) : JSON.parse(JSON.stringify(part));
 }
 
 function paletteFromCss() {
@@ -42,8 +43,15 @@ async function boot() {
   const catalog = await (await fetch('parts/index.json')).json();
 
   const canvas = document.createElement('canvas');
-  const viewer = new Viewer(canvas);
-  viewer.setPalette(paletteFromCss());
+  let viewer;
+  try {
+    viewer = new Viewer(canvas);
+    viewer.setPalette(paletteFromCss());
+  } catch (error) {
+    // A WebGL failure must not take the dropdowns and measurements with it.
+    console.error(error);
+    viewer = { supported: false, setPalette() {}, setLayers() {}, recentre() {}, dirty: false };
+  }
 
   if (!viewer.supported) {
     for (const slot of document.querySelectorAll('.viewer-slot')) {
