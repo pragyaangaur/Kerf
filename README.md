@@ -169,6 +169,16 @@ merging cable-tie into main
 
 That merge is clean as text. It is also wrong, and kerf is the only part of the toolchain in a position to notice.
 
+### How the merge works
+
+The merge is the Git kind. It works on snapshots, and it has two stages.
+
+The first stage is a three-way merge of the two revisions against their common ancestor. The ancestor is picked by its generation in the commit graph, not by its timestamp. A part is not merged as text. It is a table of parameters and a list of features, and every feature has a stable id. Kerf compares the three versions of each parameter, each feature field and the feature order separately. A value that changed on one side only is taken from that side. A value that changed on both sides to different things is a conflict that names the field. A feature that one side deleted and the other side changed is also a conflict. The code is in `kerf/merge/parts.py`.
+
+The second stage runs only when the first stage is clean. Kerf builds the merged part and runs two checks on it. The first check, in `kerf/merge/equations.py`, resolves the merged equation graph and reports every equation problem that neither input had. The second check, in `kerf/merge/interference.py`, samples the features that each side added and reports pairs that share space. Each problem is reported as a conflict, and nothing is committed.
+
+This design has a known limit. A conflict here is a reason to stop, and it is not something the repository can store. In a patch-based system such as [Pijul](https://pijul.org), changes are patches on a data structure that can hold a conflict as a normal state, and a later patch can resolve it. Kerf's checks would fit that model well, with a broken part stored as a conflict until someone fixes it. That is not built.
+
 ### It has locks, because some files genuinely cannot be merged
 
 A `.sldprt` is opaque. Two edits to it cannot be reconciled by any tool, so kerf does not pretend otherwise. It versions the file, refuses to merge it automatically, and offers the workflow that works for a binary part.
